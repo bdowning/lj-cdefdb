@@ -1,7 +1,3 @@
-struct {
-    int f_unnamed;
-};
-
 enum { N = 4 };
 
 struct sz { int foo; int bar; };
@@ -42,3 +38,6 @@ union u {
     int a;
     char *b;
 };
+
+struct xx *fooxx(int foo);
+void foovv(int foo);
