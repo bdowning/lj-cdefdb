@@ -64,6 +64,7 @@ function store_stmt(cur)
     }
 
     stmts[tag] = stmt
+    -- print('tag', tag)
 
     find_deps(cur, nil, struct_dep_mode, stmt)
 
@@ -71,21 +72,27 @@ function store_stmt(cur)
 
     if cur:haskind('TypedefDecl') then
         -- eat structs defined inside typedefs
-        local kid = cur:children()[1]
-        if kid and kid:haskind('StructDecl') and kid:name() ~= '' then
+        local kid = cur:typedefType():declaration()
+        if kid then
             local kid_tag = cursor_tag(kid)
-            find_deps(kid, nil, struct_dep_mode, stmt)
-            stmts[kid_tag] = stmt
-        end
-        if kid and kid:haskind('TypeRef') then
-            local _, b, e = cur:location('offset')
-            local _, kb, ke = cur:typedefType():declaration():location('offset')
-            if kb and b <= kb and e >= ke then
-                local kid_tag = cursor_tag(cur:typedefType():declaration())
-                -- print('OVERRIDE', kid, kid_tag, stmts[kid_tag], stmt)
-                stmts[kid_tag] = stmt
+            -- print('kid_tag', kid_tag)
+            if stmts[kid_tag] then
+                stmt.extent = 'FAKE TYPEDEF FOR ' .. stmt.name .. ' -> ' .. tostring(cur:typedefType())
             end
         end
+        -- if kid and kid:haskind('StructDecl') and kid:name() ~= '' then
+        --     find_deps(kid, nil, struct_dep_mode, stmt)
+        --     stmts[kid_tag] = stmt
+        -- end
+        -- if kid and kid:haskind('TypeRef') then
+        --     local _, b, e = cur:location('offset')
+        --     local _, kb, ke = cur:typedefType():declaration():location('offset')
+        --     if kb and b <= kb and e >= ke then
+        --         local kid_tag = cursor_tag(cur:typedefType():declaration())
+        --         -- print('OVERRIDE', kid, kid_tag, stmts[kid_tag], stmt)
+        --         stmts[kid_tag] = stmt
+        --     end
+        -- end
     end
 end
 
@@ -147,14 +154,14 @@ for _, cur in ipairs(tu_cur:children()) do
         store_stmt(cur)
     end
 end
-for tag, stmt in pairs(stmts) do
-    print(tag, stmt.kind, stmt.name, stmt.tag, stmt.tag == tag)
-    for _, m in ipairs{'deps', 'delayed_deps'} do
-        for t, _ in pairs(stmt[m]) do
-            print('', m, t)
-        end
-    end
-end
+-- for tag, stmt in pairs(stmts) do
+--     print(tag, stmt.kind, stmt.name, stmt.tag, stmt.tag == tag)
+--     for _, m in ipairs{'deps', 'delayed_deps'} do
+--         for t, _ in pairs(stmt[m]) do
+--             print('', m, t)
+--         end
+--     end
+-- end
 
 local to_dump = { }
 local visited = { }
@@ -195,7 +202,9 @@ end
 
 for tag, stmt in pairs(stmts) do
     if false
-      or (stmt.kind == 'FunctionDecl' and stmt.name == 'ev_default_loop') 
+      -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'ev_default_loop')
+      or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_start'))
+      or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_stop'))
       -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'close') 
       -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'read') 
       -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'write') 
