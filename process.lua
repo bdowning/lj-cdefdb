@@ -38,7 +38,7 @@ end
 
 local stmts = { }
 
-local struct_dep_mode = 'delayed_deps'
+local struct_dep_mode = 'no_deps'
 
 function store_stmt(cur)
     if not cur:location() then return end
@@ -72,12 +72,21 @@ function store_stmt(cur)
 
     if cur:haskind('TypedefDecl') then
         -- eat structs defined inside typedefs
-        local kid = cur:typedefType():declaration()
-        if kid then
-            local kid_tag = cursor_tag(kid)
-            -- print('kid_tag', kid_tag)
-            if stmts[kid_tag] then
-                stmt.extent = 'FAKE TYPEDEF FOR ' .. stmt.name .. ' -> ' .. tostring(cur:typedefType())
+        local _, b, e = cur:location('offset')
+        local decl = cur:typedefType():declaration()
+        local _, kb, ke = decl:location('offset')
+        if decl:haskind('StructDecl') and kb and b <= kb and e >= ke then
+            if decl:name() == '' then
+                local old_stmt = stmts[cursor_tag(decl)]
+                for k, v in pairs(old_stmt.deps) do
+                    stmt.deps[k] = v
+                end
+                for k, v in pairs(old_stmt.delayed_deps) do
+                    stmt.delayed_deps[k] = v
+                end
+                stmts[cursor_tag(decl)] = stmt
+            else
+                stmt.extent = '/*FAKE*/ typedef ' .. tostring(cur:typedefType()) .. ' ' .. stmt.name
             end
         end
         -- if kid and kid:haskind('StructDecl') and kid:name() ~= '' then
@@ -93,6 +102,16 @@ function store_stmt(cur)
         --         stmts[kid_tag] = stmt
         --     end
         -- end
+    end
+end
+
+function base_type(type)
+    if type:haskind('ConstantArray') or type:haskind('VariableArray') then
+        return base_type(type:arrayElementType())
+    elseif type:haskind('Pointer') then
+        return base_type(type:pointee())
+    else
+        return type
     end
 end
 
@@ -116,13 +135,22 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
         local typedecl = cur:type():declaration()
         local mode = 'deps'
         local parent_type = parent:type()
+        -- print(cur:type(), cur:type():declaration(), cursor_tag(cur:type():declaration()))
         if parent:haskind('FunctionDecl') then
             parent_type = parent:resultType()
         end
         if typedecl:haskind('StructDecl') and is_pointer(parent_type) then
             mode = struct_ptr_mode
         end
+        -- print(mode, cursor_tag(typedecl))
         stmt[mode][cursor_tag(typedecl)] = true
+        local canonical = cur:type():canonical()
+        local parent_canonical = parent_type:canonical()
+        -- print('CANONICAL', cur:type(), cur:type():canonical(), parent_type, parent_canonical)
+        if canonical:declaration():haskind('StructDecl') and not is_pointer(parent_canonical) then
+            -- print('CCCC')
+            stmt.deps[cursor_tag(canonical:declaration())] = true
+        end
     elseif cur:haskind('TypedefDecl') then
         local typedecl = cur:typedefType():declaration()
         if typedecl:haskind('StructDecl') then
@@ -137,6 +165,10 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
             end
             if fields > 0 then
                 stmt[struct_dep_mode][cursor_tag(typedecl)] = true
+            end
+        else
+            for i, kid in ipairs(cur:children()) do
+                find_deps(kid, cur, struct_ptr_mode, stmt)
             end
         end
     else
@@ -165,10 +197,11 @@ end
 
 local to_dump = { }
 local visited = { }
+local struct_breakers = { }
 local function dump(tag, indent)
     indent = indent or ''
     local stmt = stmts[tag]
-    -- print('## '..indent..'dumping', stmt.kind, stmt.name)
+    print('## '..indent..'dumping', stmt.kind, stmt.name)
     if visited[stmt.tag] == 'temporary' then
         -- if stmt[1] == 'TypedefDecl' then
         --     print('temp typedef inner', stmt.typedef_inner)
@@ -176,8 +209,11 @@ local function dump(tag, indent)
         --     print('temp typedef inner name', stmt.typedef_inner.name)
         -- end
         if stmt.kind == 'StructDecl' then
-            print('# circular struct breaker')
-            print('struct '..stmt.name..';')
+            if not struct_breakers[stmt.name] then
+                print('# circular struct breaker')
+                print('struct '..stmt.name..';')
+                struct_breakers[stmt.name] = true
+            end
         else
             error('circular! '.. stmt.kind ..' '.. stmt.name)
         end
@@ -202,9 +238,9 @@ end
 
 for tag, stmt in pairs(stmts) do
     if false
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'ev_default_loop')
-      or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_start'))
-      or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_stop'))
+      or (stmt.kind == 'FunctionDecl' and stmt.name == 'sqlite3_open')
+      -- or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_start'))
+      -- or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_stop'))
       -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'close') 
       -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'read') 
       -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'write') 
@@ -222,7 +258,7 @@ ffi.cdef[==[
 ]]
 local i = 1
 while i <= #to_dump do
-    -- print('dump', i, #to_dump)
+    -- print('dump', i, #to_dump, to_dump[i])
     dump(to_dump[i])
     i = i + 1
 end
