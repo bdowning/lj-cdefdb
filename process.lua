@@ -37,8 +37,9 @@ local function cursor_tag(cur)
 end
 
 local stmts = { }
+local stmt_idx = 1
 
-local struct_dep_mode = 'no_deps'
+local struct_dep_mode = 'delayed_deps'
 
 function store_stmt(cur)
     if not cur:location() then return end
@@ -61,9 +62,10 @@ function store_stmt(cur)
         deps = { },
         delayed_deps = { },
         no_deps = { },
+        idx = stmt_idx,
     }
-
     stmts[tag] = stmt
+    stmt_idx = stmt_idx + 1
     -- print('tag', tag)
 
     find_deps(cur, nil, struct_dep_mode, stmt)
@@ -78,6 +80,8 @@ function store_stmt(cur)
         if decl:haskind('StructDecl') and kb and b <= kb and e >= ke then
             if decl:name() == '' then
                 local old_stmt = stmts[cursor_tag(decl)]
+                stmt.idx = old_stmt.idx
+                stmt_idx = stmt_idx - 1
                 for k, v in pairs(old_stmt.deps) do
                     stmt.deps[k] = v
                 end
@@ -187,7 +191,7 @@ for _, cur in ipairs(tu_cur:children()) do
     end
 end
 -- for tag, stmt in pairs(stmts) do
---     print(tag, stmt.kind, stmt.name, stmt.tag, stmt.tag == tag)
+--     print(stmt.idx, tag, stmt.kind, stmt.name, stmt.tag, stmt.tag == tag)
 --     for _, m in ipairs{'deps', 'delayed_deps'} do
 --         for t, _ in pairs(stmt[m]) do
 --             print('', m, t)
@@ -201,7 +205,7 @@ local struct_breakers = { }
 local function dump(tag, indent)
     indent = indent or ''
     local stmt = stmts[tag]
-    print('## '..indent..'dumping', stmt.kind, stmt.name)
+    -- print('## '..indent..'dumping', stmt.kind, stmt.name)
     if visited[stmt.tag] == 'temporary' then
         -- if stmt[1] == 'TypedefDecl' then
         --     print('temp typedef inner', stmt.typedef_inner)
@@ -231,37 +235,139 @@ local function dump(tag, indent)
         -- print(indent..'dump delayed_deps', d)
         to_dump[#to_dump + 1] = dep
     end
-    -- print('# '..stmt.tag)
+    print('# idx '..stmt.idx..' ('..stmt.tag..')')
     print(stmt.extent..';')
     visited[stmt.tag] = true
 end
 
-for tag, stmt in pairs(stmts) do
-    if false
-      or (stmt.kind == 'FunctionDecl' and stmt.name == 'sqlite3_open')
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_start'))
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_stop'))
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'close') 
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'read') 
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'write') 
-      -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'lseek') 
-      -- or (stmt.kind == 'StructDecl' and stmt.name == '_IO_FILE') 
-    then
-    --if stmt.file == '/usr/include/sqlite3.h' then
-        to_dump[#to_dump + 1] = stmt.tag
+if true then
+    for tag, stmt in pairs(stmts) do
+        if false
+          -- or (stmt.kind == 'FunctionDecl' and stmt.name == 'sqlite3_vfs_register')
+          -- or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_start'))
+          -- or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_stop'))
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'open') 
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'close') 
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'read') 
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'write') 
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'socket') 
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'bind') 
+          or (stmt.kind == 'FunctionDecl' and stmt.name == 'connect') 
+          or (stmt.kind == 'StructDecl' and stmt.name == 'sockaddr_in') 
+          or (stmt.kind == 'StructDecl' and stmt.name == 'sockaddr_in6') 
+          or (stmt.kind == 'StructDecl' and stmt.name == 'sockaddr_storage') 
+          -- or (stmt.kind == 'StructDecl' and stmt.name == '_IO_FILE') 
+        then
+        --if stmt.file == '/usr/include/sqlite3.h' then
+            to_dump[#to_dump + 1] = stmt.tag
+        end
     end
-end
 
-io.stdout:write[[
+    io.stdout:write[[
 local ffi = require 'ffi'
 ffi.cdef[==[
 ]]
-local i = 1
-while i <= #to_dump do
-    -- print('dump', i, #to_dump, to_dump[i])
-    dump(to_dump[i])
-    i = i + 1
-end
-io.stdout:write[[
+    local i = 1
+    while i <= #to_dump do
+        -- print('dump', i, #to_dump, to_dump[i])
+        dump(to_dump[i])
+        i = i + 1
+    end
+    io.stdout:write[[
 ]==]
 ]]
+else
+    local function to_c_string_literal(str)
+        return '"' .. str
+            :gsub('\\', '\\\\')
+            :gsub('"', '\\"')
+            :gsub('\n', '\\n"\n"')
+            .. '\\0"'
+    end
+
+    local dns = { -1 }
+    local dns_i = 1
+    local dnmap = { ['-1'] = 0 }
+    local function intern_dn(dn)
+        local key = table.concat(dn, ',')
+        if not dnmap[key] then
+            for i = 1, #dn do
+                dns[#dns + 1] = dn[i]
+            end
+            dnmap[key] = dns_i
+            dns_i = dns_i + #dn
+        end
+        return dnmap[key]
+    end
+    local strings = { }
+    local strings_n = { }
+    local strings_i = 0
+    local stringmap = { }
+    local function intern_string(str)
+        str = str
+        if not stringmap[str] then
+            strings[#strings + 1] = str
+            stringmap[str] = strings_i
+            strings_n[#strings_n + 1] = strings_i
+            strings_i = strings_i + #str + 1
+        end
+        return stringmap[str]
+    end
+
+    local stmt_i = { }
+    for tag, stmt in pairs(stmts) do
+        local deps, delayed_deps = { }, { }
+        for tag, _ in pairs(stmt.deps) do
+            if stmts[tag] then
+                deps[#deps + 1] = stmts[tag].idx - 1
+            end
+        end
+        for tag, _ in pairs(stmt.delayed_deps) do
+            if stmts[tag] then
+                delayed_deps[#delayed_deps + 1] = stmts[tag].idx - 1
+            end
+        end
+        table.sort(deps)
+        table.sort(delayed_deps)
+        deps[#deps + 1] = -1
+        delayed_deps[#delayed_deps + 1] = -1
+        stmt.deps_dn = intern_dn(deps)
+        stmt.delayed_deps_dn = intern_dn(delayed_deps)
+        stmt_i[stmt.idx] = stmt
+    end
+
+    io.stdout:write([[struct stmt {
+    int name;
+    int kind;
+    int extent;
+    int file;
+    int deps;
+    int delayed_deps;
+};]], '\n')
+    io.stdout:write('const struct stmt stmts[] = {\n')
+    for i, stmt in ipairs(stmt_i) do
+        local t = {
+            intern_string(stmt.name),
+            intern_string(stmt.kind),
+            intern_string(stmt.extent),
+            intern_string(stmt.file),
+            stmt.deps_dn,
+            stmt.delayed_deps_dn,
+        }
+        io.stdout:write('    /* '..(i-1)..' */ { '..table.concat(t, ', ')..' },\n')
+    end
+    io.stdout:write('};\n')
+    io.stdout:write('const char *stmt_strings =')
+    for i, str in ipairs(strings) do
+        io.stdout:write('\n    /* '..strings_n[i]..' */ ', to_c_string_literal(str))
+    end
+    io.stdout:write(';\n')
+    io.stdout:write('const int stmt_deps[] = {')
+    for i = 1, #dns do
+        if (i - 1) % 8 == 0 then
+            io.stdout:write('\n    /* '..(i - 1)..' */')
+        end
+        io.stdout:write(' '..dns[i]..',')
+    end
+    io.stdout:write('\n};\n')
+end
