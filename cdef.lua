@@ -155,7 +155,7 @@ local function find_stmts(kind, name)
         end)
     -- print('b', b, 'max', max, 't', t)
     if b >= t then
-        error("cdef: No matching "..kind.." "..prefix.."*")
+        error("cdef: No matching "..kind.." "..name.."*")
     end
     return b, t
 end
