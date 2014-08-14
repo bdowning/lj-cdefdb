@@ -528,15 +528,37 @@ else
         stmt_i[stmt.idx] = stmt
     end
 
-    io.stdout:write([[struct stmt {
+    local constants = { }
+    for e, tag in pairs(enums) do
+        constants[e] = stmts[tag]
+    end
+    for m, tag in pairs(macros) do
+        if not constants[m] and consts[m] then
+            constants[m] = stmts[tag]
+        end
+    end
+    local constants_i = { }
+    for c, stmt in pairs(constants) do
+        table.insert(constants_i, {
+            name = c,
+            stmt = stmt
+        })
+    end
+    table.sort(constants_i, function (a, b) return a.name < b.name end)
+    for _, c in ipairs(constants_i) do
+        -- so it's sorted/consistent
+        c.name_i = intern_string(c.name)
+    end
+
+    io.stdout:write('const int cdefdb_num_stmts = '..#stmt_i..';\n')
+    io.stdout:write([[const struct {
     int name;
     int kind;
     int extent;
     int file;
     int deps;
     int delayed_deps;
-};]], '\n')
-    io.stdout:write('const struct stmt stmts[] = {\n')
+} cdefdb_stmts[] = {]], '\n')
     for i, stmt in ipairs(stmt_i) do
         local t = {
             intern_string(stmt.name),
@@ -549,19 +571,58 @@ else
         io.stdout:write('    /* '..(i-1)..' */ { '..table.concat(t, ', ')..' },\n')
     end
     io.stdout:write('};\n')
-    io.stdout:write('const char *stmt_strings =')
+    io.stdout:write('const char *cdefdb_stmt_strings =')
     for i, str in ipairs(strings) do
         io.stdout:write('\n    /* '..strings_n[i]..' */ ', to_c_string_literal(str))
     end
     io.stdout:write(';\n')
-    io.stdout:write('const int stmt_deps[] = {')
-    for i = 1, #dns do
-        if (i - 1) % 8 == 0 then
-            io.stdout:write('\n    /* '..(i - 1)..' */')
+    local function emit_int_array(name, t, key)
+        key = key or function (e) return e end
+        io.stdout:write('const int '..name..'[] = {')
+        for i = 1, #t do
+            if (i - 1) % 8 == 0 then
+                io.stdout:write('\n    /* '..(i - 1)..' */')
+            end
+            io.stdout:write(' '..key(t[i])..',')
         end
-        io.stdout:write(' '..dns[i]..',')
+        io.stdout:write('\n};\n')
     end
-    io.stdout:write('\n};\n')
+    emit_int_array('cdefdb_stmt_deps', dns)
+    io.stdout:write('const int cdefdb_num_constants = '..#constants_i..';\n')
+    io.stdout:write([[
+const struct {
+    int name;
+    int stmt;
+} cdefdb_constants_idx[] = {]], '\n')
+    for i, c in ipairs(constants_i) do
+        io.stdout:write(string.format('    /* %d */ { %d, %d }, /* %s */\n',
+                                      i-1, c.name_i, c.stmt.idx-1, c.name))
+    end
+    io.stdout:write('};\n')
+    local function sort3keys(a, b, c)
+        return function (x, y)
+            if x[a] == y[a] then
+                if x[b] == y[b] then
+                    return x[c] < y[c]
+                end
+                return x[b] < y[b]
+            end
+            return x[a] < y[a]
+        end
+    end
+    local function emit_stmt_idx(a, b, c)
+        table.sort(stmt_i, sort3keys(a, b, c))
+        emit_int_array(string.format('cdefdb_stmt_index_%s_%s_%s',
+                                     a, b, c),
+                       stmt_i,
+                       function (stmt) return stmt.idx-1 end)
+    end
+    emit_stmt_idx('file', 'kind', 'name')
+    emit_stmt_idx('file', 'name', 'kind')
+    emit_stmt_idx('kind', 'file', 'name')
+    emit_stmt_idx('kind', 'name', 'file')
+    emit_stmt_idx('name', 'file', 'kind')
+    emit_stmt_idx('name', 'kind', 'file')
 end
 
 -- local function expand(token, visited, indent)
