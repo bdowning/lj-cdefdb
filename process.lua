@@ -144,6 +144,9 @@ function store_stmt(cur)
     -- dbg('tag', tag)
 
     find_deps(cur, nil, struct_dep_mode, stmt)
+    -- kill any self dependencies
+    stmt.deps[stmt.tag] = nil
+    stmt.delayed_deps[stmt.tag] = nil
 
     --dbg(tag, stmt.kind, stmt.name, stmt.tag, stmt.tag == tag)
 
