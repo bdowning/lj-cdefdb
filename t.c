@@ -2,13 +2,18 @@ enum { N = 4 };
 
 struct sz { int foo; int bar; };
 
-typedef struct {
+typedef struct gggg {
     int f_boo;
 } ***foo[N*2+sizeof(struct sz)][N*N], foonp;
 
 typedef struct bar {
     int f_bar;
-} ***const bar[N*2+sizeof(struct sz)][N*N*N], foon;
+} ***const bar[N*2+sizeof(struct sz)][N*N*N], foon,
+    ass[14]
+
+    ,
+
+    *quux     /*boo*/;
 
 typedef struct baz baz;
 struct baz {
