@@ -202,28 +202,28 @@ local function find_constants(name)
     return b, t
 end
 
-local visited = { }
+local visited = ffi.new('char [?]', lC.cdefdb_num_stmts)
 
 local function emit(to_dump, ldbg)
     ldbg = ldbg or dbg
     local macros = { }
     local function dump(idx)
         local v = visited[idx]
-        if v and v ~= 'temporary' then return end
+        if v > 0 and v ~= 2 then return end
         local stmt = lC.cdefdb_stmts[idx]
         local kind = get_string(stmt.kind)
-        if v == 'temporary' then
+        if v == 2 then
             if kind == 'StructDecl' then
                 local s = '/* circular */ struct '..get_string(stmt.name)..';'
                 ldbg(s)
                 ffi.cdef(s)
-                visited[idx] = 'circular'
+                visited[idx] = 3
                 return
             else
                 error('circular '..kind..' '..get_string(stmt.extent))
             end
         end
-        visited[idx] = 'temporary'
+        visited[idx] = 2
         foreach_dep(stmt.deps, dump)
         foreach_dep(stmt.delayed_deps, function (dep)
             to_dump[#to_dump + 1] = dep
@@ -238,7 +238,7 @@ local function emit(to_dump, ldbg)
             ldbg(s)
             ffi.cdef(s)
         end
-        visited[idx] = true
+        visited[idx] = 1
     end
 
     ldbg("local ffi = require 'ffi'\nffi.cdef[==[")
