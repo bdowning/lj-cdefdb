@@ -1,5 +1,11 @@
 local ffi = require 'ffi'
-ffi.cdef[[
+
+local cdef, C, floor, min = ffi.cdef, ffi.C, math.floor, math.min
+
+local dbg = function () end
+-- dbg = print
+
+cdef[[
 const int cdefdb_num_stmts;
 const struct {
     int name;
@@ -22,12 +28,19 @@ const int cdefdb_stmt_index_kind_file_name[];
 const int cdefdb_stmt_index_kind_name_file[];
 const int cdefdb_stmt_index_name_file_kind[];
 const int cdefdb_stmt_index_name_kind_file[];
+int cdefdb_strcmp(const char *s1, const char *s2) asm("strcmp");
 ]]
 
 local lC = ffi.load('./cdefdb.so')
 
+local strcache = setmetatable({ }, { __mode = 'v' })
 local function get_string(offset)
-    return ffi.string(lC.cdefdb_stmt_strings + offset)
+    local ret = strcache[offset]
+    if not ret then
+        ret = ffi.string(lC.cdefdb_stmt_strings + offset)
+        strcache[offset] = ret
+    end
+    return ret
 end
 
 local function foreach_dep(offset, fun)
@@ -37,14 +50,35 @@ local function foreach_dep(offset, fun)
     end
 end
 
+local function string_lt(offset, str)
+    return C.cdefdb_strcmp(lC.cdefdb_stmt_strings + offset, str) < 0
+end
+
+local function string_ge(offset, str)
+    return C.cdefdb_strcmp(lC.cdefdb_stmt_strings + offset, str) >= 0
+end
+
+local function string_eq(offset, str)
+    return C.cdefdb_strcmp(lC.cdefdb_stmt_strings + offset, str) == 0
+end
+
+local function lt(a, b) return a < b end
+local function gt(a, b) return a > b end
+local function ge(a, b) return a > b end
+
+local function identity(x) return x end
+local function constantly(x)
+    return function () return x end
+end
+
 local function lower_bound(arr, low, high, comp)
     local mid
     while true do
         if low > high then
             return low
         end
-        mid = math.floor((high + low) / 2)
-        if comp(arr[mid]) then -- arr[i] < search
+        mid = floor((high + low) / 2)
+        if comp(arr[mid], mid) then -- arr[i] < search
             low = mid + 1
         else
             high = mid - 1
@@ -58,8 +92,8 @@ local function upper_bound(arr, low, high, comp)
         if low > high then
             return high
         end
-        mid = math.floor((high + low) / 2)
-        if comp(arr[mid]) then -- arr[i] > search
+        mid = floor((high + low) / 2)
+        if comp(arr[mid], mid) then -- arr[i] > search
             high = mid + 1
         else
             low = mid - 1
@@ -67,105 +101,146 @@ local function upper_bound(arr, low, high, comp)
     end
 end
 
-local function cmpfn(key, a, av, cmp)
-    return function (el)
-        local stmt = key(el)
-        local m = get_string(stmt[a])
-        return cmp(m, av)
-    end
-end
-
-local function cmp2fn(key, a, av, b, bv, cmp)
-    return function (el)
-        local stmt = key(el)
-        local m = get_string(stmt[a])
-        if m == av then
-            local n = get_string(stmt[b])
-            return cmp(n, bv)
+local function cmp2fn(a, av, b, bv, cmp)
+    return function (stmt)
+        if string_eq(stmt[a], av) then
+            return cmp(stmt[b], bv)
         end
-        return cmp(m, av)
+        return cmp(stmt[a], av)
     end
 end
 
-local function lt(a, b) return a < b end
-local function gt(a, b) return a > b end
-
-local function find_stmt(name, kind)
-    local idx = lower_bound(
-        lC.cdefdb_stmt_index_name_kind_file,
-        0, lC.cdefdb_num_stmts,
-        cmp2fn(function (el) return lC.cdefdb_stmts[el] end,
-               'name', name, 'kind', kind, lt))
-    return lC.cdefdb_stmt_index_name_kind_file[idx]
-end
-
-local function identity(x) return x end
 local function string_plus_one(str)
     return str:sub(1, -2) .. string.char(str:byte(-1) + 1)
 end
 
-local function find_constants(prefix)
+local function find_stmts(kind, name)
+    local star
+    if name:sub(-1) == '*' then
+        name = name:sub(1, -2)
+        star = true
+    end
+    local namf = star and string_plus_one(name)
+    local cmp_lt_name = cmp2fn('kind', kind, 'name', name, string_lt)
+    local cmp_ge_namf =
+        star and cmp2fn('kind', kind, 'name', namf, string_ge) or constantly(false)
+    local max = lC.cdefdb_num_stmts
     local b = lower_bound(
-        lC.cdefdb_constants_idx,
-        0, lC.cdefdb_num_constants,
-        cmpfn(identity, 'name', prefix, lt))
+        lC.cdefdb_stmt_index_kind_name_file,
+        0, lC.cdefdb_num_stmts,
+        function (i, mid)
+            local stmt = lC.cdefdb_stmts[i]
+            if cmp_ge_namf(stmt) then
+                max = min(mid, max)
+            end
+            -- print(name, get_string(stmt.name), namf, mid, max)
+            return cmp_lt_name(stmt)
+        end)
+    if not star then
+        local i = lC.cdefdb_stmt_index_kind_name_file[b]
+        if get_string(lC.cdefdb_stmts[i].kind) == kind and
+            get_string(lC.cdefdb_stmts[i].name) == name
+        then
+            return b, b + 1
+        else
+            error("cdef: Couldn't find "..kind.." "..name)
+        end
+    end
+    local cmp_lt_namf = cmp2fn('kind', kind, 'name', namf, string_lt)
     local t = lower_bound(
-        lC.cdefdb_constants_idx,
-        b, lC.cdefdb_num_constants,
-        cmpfn(identity, 'name', string_plus_one(prefix), lt))
+        lC.cdefdb_stmt_index_kind_name_file,
+        b, max,
+        function (i)
+            return cmp_lt_namf(lC.cdefdb_stmts[i])
+        end)
+    -- print('b', b, 'max', max, 't', t)
+    if b >= t then
+        error("cdef: No matching "..kind.." "..prefix.."*")
+    end
     return b, t
 end
 
--- print(lC.cdefdb_stmts)
--- print(lC.cdefdb_stmt_strings)
--- print(lC.cdefdb_stmt_deps)
-
--- for i = 0, lC.cdefdb_num_stmts-1 do
---     print(get_string(lC.cdefdb_stmts[i].name),
---           get_string(lC.cdefdb_stmts[i].kind),
---           get_string(lC.cdefdb_stmts[i].file))
--- end
-
-local i = find_stmt('ev_run', 'FunctionDecl')
--- print(i)
--- print(get_string(lC.cdefdb_stmts[i].name),
---       get_string(lC.cdefdb_stmts[i].kind),
---       get_string(lC.cdefdb_stmts[i].file),
---       get_string(lC.cdefdb_stmts[i].extent))
+local function find_constants(name)
+    local star
+    if name:sub(-1) == '*' then
+        name = name:sub(1, -2)
+        star = true
+    end
+    local namf = star and string_plus_one(name)
+    local max = lC.cdefdb_num_constants
+    local b = lower_bound(
+        lC.cdefdb_constants_idx,
+        0, lC.cdefdb_num_constants,
+        function (entry, mid)
+            if star and string_ge(entry.name, namf) or false then
+                max = min(mid, max)
+            end
+            -- print(name, name, namf, mid, max)
+            return string_lt(entry.name, name)
+            -- local entry_name = get_string(entry.name)
+            -- if star and entry_name >= namf or false then
+            --     max = min(mid, max)
+            -- end
+            -- -- print(name, name, namf, mid, max)
+            -- return entry_name < name
+        end)
+    if not star then
+        if get_string(lC.cdefdb_constants_idx[b].name) == name then
+            return b, b + 1
+        else
+            error("cdef: Couldn't find constant "..name)
+        end
+    end
+    local t = lower_bound(
+        lC.cdefdb_constants_idx,
+        b, max,
+        function (entry) return string_lt(entry.name, namf) end)
+    -- print('b', b, 'max', max, 't', t)
+    if b >= t then
+        error("cdef: No matching constants: "..name.."*")
+    end
+    return b, t
+end
 
 local visited = { }
 
 local function emit(to_dump)
     local macros = { }
     local function dump(idx)
+        local v = visited[idx]
+        if v and v ~= 'temporary' then return end
         local stmt = lC.cdefdb_stmts[idx]
         local kind = get_string(stmt.kind)
-        if visited[idx] == 'temporary' then
+        if v == 'temporary' then
             if kind == 'StructDecl' then
-                print('/* circular */ struct '..get_string(stmt.name)..';')
+                local s = '/* circular */ struct '..get_string(stmt.name)..';'
+                dbg(s)
+                ffi.cdef(s)
                 visited[idx] = 'circular'
+                return
             else
                 error('circular '..kind..' '..get_string(stmt.extent))
             end
         end
-        if visited[idx] then return end
         visited[idx] = 'temporary'
         foreach_dep(stmt.deps, dump)
         foreach_dep(stmt.delayed_deps, function (dep)
-                        to_dump[#to_dump + 1] = dep
+            to_dump[#to_dump + 1] = dep
         end)
         if kind == 'MacroDefinition' then
             macros[#macros + 1] =
-                string.format('    %s =%s,',
+                string.format('/* macro */ enum { %s =%s };',
                               get_string(stmt.name),
                               get_string(stmt.extent))
         else
-            print(get_string(stmt.extent)..';')
+            local s = get_string(stmt.extent)..';'
+            dbg(s)
+            ffi.cdef(s)
         end
         visited[idx] = true
     end
 
-    print[[
+    dbg[[
 local ffi = require 'ffi'
 ffi.cdef[==[
 ]]
@@ -175,31 +250,75 @@ ffi.cdef[==[
         dump(to_dump[i])
         i = i + 1
     end
-    if #macros > 0 then
-        print('/* macro */ enum {')
-        for i = 1, #macros do
-            print(macros[i])
-        end
-        print('};')
+    for i = 1, #macros do
+        dbg(macros[i])
+        ffi.cdef(macros[i])
     end
 
-    print(']==]')
+    dbg(']==]')
 end
 
-local function to_dump_constants(to_dump, prefix)
-    local b, t = find_constants(prefix)
+local function to_dump_constants(to_dump, name)
+    local b, t = find_constants(name)
     for i = b, t-1 do
-        table.insert(to_dump, lC.cdefdb_constants_idx[i].stmt)
+        to_dump[#to_dump + 1] = lC.cdefdb_constants_idx[i].stmt
+        -- print('constant', i, to_dump[#to_dump])
     end
 end
+
+local function to_dump_stmts(to_dump, kind, name)
+    local b, t = find_stmts(kind, name)
+    for i = b, t-1 do
+        to_dump[#to_dump + 1] = lC.cdefdb_stmt_index_kind_name_file[i]
+        -- print('stmt', i, to_dump[#to_dump])
+    end
+end
+
+local kindmap = {
+    functions = 'FunctionDecl',
+    structs = 'StructDecl',
+    unions = 'UnionDecl',
+    typedefs = 'TypedefDecl',
+}
+
+local loaded = { }
+local function cdef_(spec)
+    local to_dump = { }
+    for k, v in pairs(spec) do
+        if type(v) == 'string' then
+            v = { v }
+        end
+        if k == 'constants' then
+            for _, name in ipairs(v) do
+                if not loaded[name] then
+                    to_dump_constants(to_dump, name)
+                    loaded[name] = true
+                end
+            end
+        elseif kindmap[k] then
+            for _, name in ipairs(v) do
+                local kname = k..'\0'..name
+                if not loaded[kname] then
+                    to_dump_stmts(to_dump, kindmap[k], name)
+                    loaded[kname]= true
+                end
+            end
+        end
+    end
+    emit(to_dump)
+end
+
+return cdef_
+
+-- cdef_{ funcs = 'ev_*', constants = 'EV*' }
+-- cdef_{ funcs = { 'open', 'close', 'read', 'write' }, constants = 'O_*' }
 
 -- local to_dump = { i }
 -- to_dump_constants(to_dump, 'EV')
 -- emit(to_dump)
 
-local to_dump = { }
-to_dump_constants(to_dump, 'O_')
-to_dump_constants(to_dump, 'MSG_')
-to_dump_constants(to_dump, 'SEEK_')
-to_dump_constants(to_dump, 'SIG')
-emit(to_dump)
+-- cdef_{ constants = 'DEFFILEMODE' }
+-- cdef_{ constants = 'SQLITE_IOERR_*' }
+-- cdef_{ constants = 'EV_READ' }
+-- cdef_{ constants = 'EVLOOP_NONBLOCK' }
+-- cdef_{ functions = 'ev_*' }
