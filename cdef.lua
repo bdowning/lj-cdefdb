@@ -204,7 +204,8 @@ end
 
 local visited = { }
 
-local function emit(to_dump)
+local function emit(to_dump, ldbg)
+    ldbg = ldbg or dbg
     local macros = { }
     local function dump(idx)
         local v = visited[idx]
@@ -214,7 +215,7 @@ local function emit(to_dump)
         if v == 'temporary' then
             if kind == 'StructDecl' then
                 local s = '/* circular */ struct '..get_string(stmt.name)..';'
-                dbg(s)
+                ldbg(s)
                 ffi.cdef(s)
                 visited[idx] = 'circular'
                 return
@@ -234,16 +235,13 @@ local function emit(to_dump)
                               get_string(stmt.extent))
         else
             local s = get_string(stmt.extent)..';'
-            dbg(s)
+            ldbg(s)
             ffi.cdef(s)
         end
         visited[idx] = true
     end
 
-    dbg[[
-local ffi = require 'ffi'
-ffi.cdef[==[
-]]
+    ldbg("local ffi = require 'ffi'\nffi.cdef[==[")
 
     local i = 1
     while i <= #to_dump do
@@ -251,11 +249,11 @@ ffi.cdef[==[
         i = i + 1
     end
     for i = 1, #macros do
-        dbg(macros[i])
+        ldbg(macros[i])
         ffi.cdef(macros[i])
     end
 
-    dbg(']==]')
+    ldbg(']==]')
 end
 
 local function to_dump_constants(to_dump, name)
@@ -305,7 +303,7 @@ local function cdef_(spec)
             end
         end
     end
-    emit(to_dump)
+    emit(to_dump, spec.verbose and print)
 end
 
 return cdef_
