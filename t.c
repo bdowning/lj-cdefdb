@@ -1,3 +1,11 @@
+
+
+#define foomacro(foo, bar, baz) foo #bar #baz
+#define _foo _bar
+#define _bar _foo
+
+_foo
+
 enum { N = 4 };
 
 struct sz { int foo; int bar; };

@@ -96,8 +96,9 @@ function store_stmt(cur)
     local tag = cursor_tag(cur)
     if stmts[tag] then return end
 
+    local realfile = cur:location()
     local file = cur:presumedLocation()
-    if file:match('^<.*>$') then return end
+    if realfile == '???' then return end
     local stmt = {
         name = cur:name(),
         kind = cur:kind(),
@@ -116,6 +117,22 @@ function store_stmt(cur)
             dbg('ignore self-defined '..stmt.name, macros[stmt.name])
             macros[stmt.name] = nil
             return
+        end
+        local _, tokens = cur:_tokens()
+        table.remove(tokens, 1)
+        stmt.tokens = tokens
+        local params = stmt.extent:match('^%(([^)]*)%)')
+        stmt.expansion = stmt.extent:match(' (.*)')
+        if params then
+            stmt.params = { }
+            for p in params:gmatch('[^,]+') do
+                table.insert(stmt.params, p)
+            end
+            local ps = #stmt.params
+            local ptokens = 2 + (ps > 1 and ps * 2 - 1 or ps)
+            for i = 1, ptokens do
+                table.remove(stmt.tokens, 1)
+            end
         end
         macros[stmt.name] = stmt.tag
         -- don't need more cleanup (more spaces, backslash-newlines)
@@ -185,8 +202,11 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
     end
     if cur:haskind('DeclRefExpr') then
         dbg('DeclRefExpr', cur:name())
-        assert(enums[cur:name()], 'enum used before being defined!')
-        stmt.deps[enums[cur:name()]] = true
+        if enums[cur:name()] then
+            stmt.deps[enums[cur:name()]] = true
+        else
+            dbg(cur:name(), 'used before defined')
+        end
     end
     if cur:haskind('ParmDecl') then
         -- structs in parameter lists are local, so they need to be
@@ -247,6 +267,114 @@ for _, cur in ipairs(tu_cur:children()) do
         and not (cur:haskind('FunctionDecl') and cur:isDefinition())
     then
         store_stmt(cur)
+    end
+end
+
+local function tmap(t, f)
+    local r = { }
+    for i = 1, #t do
+        r[#r+1] = f(t[i])
+    end
+    return r
+end
+
+local function tappend(r, ...)
+    local ts = {...}
+    for _, t in ipairs(ts) do
+        for i = 1, #t do
+            r[#r+1] = t[i]
+        end
+    end
+    return r
+end
+
+local function tjoin(...)
+    return tappend({ }, ...)
+end
+
+local function tsub(t, a, b)
+    a = a or 1
+    b = b or #t
+    if b < 0 then
+        b = #t + 1 - b
+    end
+    local r = { }
+    for i = a, b do
+        r[#r+1] = t[i]
+    end
+    return r
+end
+
+local consts = { }
+local test_num = 0
+local function const_test(token, indent)
+    indent = indent or ''
+    if consts[token] == 'testing' then
+        dbg(indent..'const_test', token, 'recursed, therefore false')
+        consts[token] = false
+        return consts[token]
+    end
+    if consts[token] ~= nil then
+        dbg(indent..'const_test', token, 'cached', not not consts[token])
+        return consts[token]
+    end
+    dbg(indent..'const_test', token)
+    local tag = macros[token]
+    if not tag then return consts[token] end
+    local stmt = stmts[tag]
+    consts[token] = 'testing'
+    dbg(indent..'  <'..stmt.extent..'>')
+    if stmt.params then
+        dbg(indent..'  false due to unhandled params')
+        consts[token] = false
+    else
+        local deps = { }
+        local tokens = tmap(stmt.tokens, function(x) return x.extent end)
+        for i, t in ipairs(tokens) do
+            if macros[t] then
+                table.insert(deps, macros[t])
+            end
+            if enums[t] then
+                table.insert(deps, enums[t])
+                dbg(indent..'  is enum', t, 'replacing with 1')
+                tokens[i] = '1'
+            end
+            const_test(t, indent..'  ')
+            if consts[t] == false then
+                dbg(indent..'  false due to non-const token', t)
+                consts[token] = false
+                return consts[token]
+            end
+            if consts[t] then
+                tokens[i] = consts[t].test_sym
+            end
+        end
+        test_num = test_num + 1
+        local test_sym = string.format('__TEST_%d', test_num);
+        local test = string.format('enum { %s = (%s) };',
+                                   test_sym, table.concat(tokens, ' '))
+        dbg(indent..'  test:', test)
+        local is_const, err = pcall(function ()
+            require'ffi'.cdef(test)
+        end)
+        if is_const then
+            dbg(indent..'  true due to successful test')
+            consts[token] = { deps = deps, test_sym = test_sym }
+        else
+            dbg(indent..'  false due to failed test', err)
+            consts[token] = false
+        end
+    end
+    return consts[token]
+end
+
+for m, tag in pairs(macros) do
+    local stmt = stmts[tag]
+    local c = const_test(m)
+    if c then
+        for _, d in ipairs(c.deps) do
+            stmt.deps[d] = true
+        end
     end
 end
 
@@ -435,3 +563,29 @@ else
     end
     io.stdout:write('\n};\n')
 end
+
+-- local function expand(token, visited, indent)
+--     indent = indent or ''
+--     print(indent..'expand', token)
+--     local tag = macros[token]
+--     if not tag then return { token } end
+--     if visited[token] then
+--         print(indent..'  recursed on', token)
+--         return token
+--     end
+--     visited[token] = true
+--     local stmt = stmts[tag]
+--     print(indent..'  <'..stmt.extent..'>')
+--     local ret = { }
+--     if stmt.params then
+--         print(indent..'  unhandled params', token)
+--         ret = { token }
+--     else
+--         for i, t in ipairs(stmt.tokens) do
+--             tappend(ret, expand(t.extent, visited, indent..'  '))
+--         end
+--     end
+--     const_test(token, ret, indent)
+--     visited[token] = false
+--     return ret
+-- end
