@@ -20,6 +20,10 @@ struct baz {
     int f_baz;
 };
 
+enum {
+    FOO = N
+};
+
 struct quux {
     int f_quux;
 };

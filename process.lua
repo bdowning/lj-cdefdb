@@ -1,7 +1,7 @@
 #!/usr/bin/env luajit
 
--- local dbg = print
 local dbg = function () end
+-- dbg = print
 
 assert(arg[1], "Usage: "..arg[0].." <filename> ...")
 
@@ -70,12 +70,21 @@ function is_pointer(type)
     end
 end
 
+function strip_hashes(str)
+    repeat
+        local old = str
+        str = old:gsub('\n#[^\n]*\n', '\n')
+    until old == str
+    return str
+end
 
 local stmts = { }
 local stmt_idx = 1
 
 local struct_dep_mode = 'delayed_deps'
 local typedef_ends = { }
+local enums = { }
+local macros = { }
 
 function store_stmt(cur)
     if not cur:location() then return end
@@ -92,7 +101,7 @@ function store_stmt(cur)
     local stmt = {
         name = cur:name(),
         kind = cur:kind(),
-        extent = getExtent(cur:location('offset')),
+        extent = strip_hashes(getExtent(cur:location('offset'))),
         file = file,
         tag = tag,
         deps = { },
@@ -100,6 +109,19 @@ function store_stmt(cur)
         no_deps = { },
         idx = stmt_idx,
     }
+
+    if cur:haskind('MacroDefinition') then
+        stmt.extent = stmt.extent:sub(#stmt.name + 1)
+        if stmt.extent == ' '..stmt.name then
+            dbg('ignore self-defined '..stmt.name, macros[stmt.name])
+            macros[stmt.name] = nil
+            return
+        end
+        macros[stmt.name] = stmt.tag
+        -- don't need more cleanup (more spaces, backslash-newlines)
+        -- because clang -E -dD takes care of that
+    end
+
     stmts[tag] = stmt
     stmt_idx = stmt_idx + 1
     -- dbg('tag', tag)
@@ -148,7 +170,7 @@ function store_stmt(cur)
                         :sub(old_e - b + 1, e - b)
                         :match('^%s*,%s*(%s.*)$')
                 end
-                stmt.extent = '/* generated */ ' .. pre .. tostring(td_basetype) .. post
+                stmt.extent = '/* generated */ ' .. strip_hashes(pre .. tostring(td_basetype) .. post)
                 dbg('typedef', tag, 'decl', cursor_tag(decl), stmt.extent)
             end
             typedef_ends[td_starttag] = e
@@ -157,6 +179,15 @@ function store_stmt(cur)
 end
 
 function find_deps(cur, parent, struct_ptr_mode, stmt)
+    if cur:haskind('EnumConstantDecl') then
+        dbg('EnumConstantDecl', cur:name())
+        enums[cur:name()] = stmt.tag
+    end
+    if cur:haskind('DeclRefExpr') then
+        dbg('DeclRefExpr', cur:name())
+        assert(enums[cur:name()], 'enum used before being defined!')
+        stmt.deps[enums[cur:name()]] = true
+    end
     if cur:haskind('ParmDecl') then
         -- structs in parameter lists are local, so they need to be
         -- defined (or at least forward-declared) first
@@ -211,7 +242,7 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
 end
 
 for _, cur in ipairs(tu_cur:children()) do
-    if not cur:kind():match('^Macro') 
+    if not cur:haskind('MacroExpansion') 
         and not cur:haskind('InclusionDirective') 
         and not (cur:haskind('FunctionDecl') and cur:isDefinition())
     then
