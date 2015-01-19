@@ -86,10 +86,14 @@ local typedef_ends = { }
 local enums = { }
 local macros = { }
 
+function haskind_structish(decl)
+    return decl:haskind('StructDecl') or decl:haskind('UnionDecl')
+end
+
 function store_stmt(cur)
     if not cur:location() then return end
 
-    if cur:haskind('StructDecl') then
+    if haskind_structish(cur) then
         cur = cur:type():declaration()
     end
 
@@ -158,8 +162,8 @@ function store_stmt(cur)
         local decl = td_basetype:declaration()
         local _, kb, ke = decl:location('offset')
         dbg('\ntypedef', f, b, kb, ke, e, decl:kind(), decl:name())
-        if decl:haskind('StructDecl') and kb and b <= kb and e >= ke then
-            dbg('\ntypedef struct inner', f, b, kb, ke, e, decl:name(), struct_fields(decl))
+        if haskind_structish(decl) and kb and b <= kb and e >= ke then
+            dbg('\ntypedef', stmt.kind, 'inner', f, b, kb, ke, e, decl:name(), struct_fields(decl))
             if decl:name() == '' or struct_fields(decl) == 0 then
                 -- eat anon or empty structs defined inside typedefs
                 if typedef_ends[td_starttag] then
@@ -226,7 +230,7 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
         if parent:haskind('FunctionDecl') then
             parent_type = parent:resultType()
         end
-        if typedecl:haskind('StructDecl') and is_pointer(parent_type) then
+        if haskind_structish(typedecl) and is_pointer(parent_type) then
             mode = struct_ptr_mode
         end
         -- dbg(mode, cursor_tag(typedecl))
@@ -234,14 +238,14 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
         local canonical = cur:type():canonical()
         local parent_canonical = parent_type:canonical()
         -- dbg('CANONICAL', cur:type(), cur:type():canonical(), parent_type, parent_canonical)
-        if canonical:declaration():haskind('StructDecl') and not is_pointer(parent_canonical) then
+        if haskind_structish(canonical:declaration()) and not is_pointer(parent_canonical) then
             -- dbg('CCCC')
             stmt.deps[cursor_tag(canonical:declaration())] = true
         end
     elseif cur:haskind('TypedefDecl') then
         local typedecl = base_type(cur:typedefType()):declaration()
-        if typedecl:haskind('StructDecl') then
-            -- dbg('crawl StructDecl', typedecl)
+        if haskind_structish(typedecl) then
+            -- dbg('crawl (Struct/Union)Decl', typedecl)
             -- skip first child (the typeref), any attached structs
             -- are crawled extra above; otherwise we get an
             -- unneccessarily-strong dependency on the struct
@@ -410,6 +414,12 @@ if false then
                 if not struct_breakers[stmt.name] then
                     print('# circular struct breaker')
                     print('struct '..stmt.name..';')
+                    struct_breakers[stmt.name] = true
+                end
+            elseif stmt.kind == 'UnionDecl' then
+                if not struct_breakers[stmt.name] then
+                    print('# circular union breaker')
+                    print('union '..stmt.name..';')
                     struct_breakers[stmt.name] = true
                 end
             else

@@ -204,6 +204,11 @@ end
 
 local visited = ffi.new('char [?]', lC.cdefdb_num_stmts)
 
+local keyword_for_kind = {
+    StructDecl = 'struct',
+    UnionDecl = 'union',
+}
+
 local function emit(to_dump, ldbg)
     ldbg = ldbg or dbg
     local macros = { }
@@ -213,8 +218,9 @@ local function emit(to_dump, ldbg)
         local stmt = lC.cdefdb_stmts[idx]
         local kind = get_string(stmt.kind)
         if v == 2 then
-            if kind == 'StructDecl' then
-                local s = '/* circular */ struct '..get_string(stmt.name)..';'
+            if kind == 'StructDecl' or kind == 'UnionDecl' then
+                local s = '/* circular */ ' ..
+                    keyword_for_kind[kind] .. ' '..get_string(stmt.name)..';'
                 ldbg(s)
                 ffi.cdef(s)
                 visited[idx] = 3
