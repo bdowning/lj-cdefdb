@@ -24,11 +24,10 @@ pp_output="/tmp/lj-cdefdb-preprocessed$$.c"
 trap "rm -f $pp_output" 0
 ${CLANG:-clang} -E -dD "$@" "$file" > "$pp_output"
 
-ls -l "$pp_output"
-
 cd "$script_dir/ljclang"
 make inc="$llvm"/include libdir="$llvm"/lib libljclang_support.so
 LD_LIBRARY_PATH=.:"$llvm"/lib:${LD_LIBRARY_PATH:-.} luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
 cd "$orig_dir"
 
 ${CC:-cc} -fPIC -shared -o cdefdb.so cdefdb.c
+echo "cdefdb.so generated"
