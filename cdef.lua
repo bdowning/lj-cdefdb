@@ -2,7 +2,8 @@
 
 local ffi = require 'ffi'
 
-local cdef, C, floor, min = ffi.cdef, ffi.C, math.floor, math.min
+local cdef, C, ffi_string, floor, min =
+    ffi.cdef, ffi.C, ffi.string, math.floor, math.min
 
 local dbg = function () end
 -- dbg = print
@@ -48,7 +49,7 @@ local strcache = setmetatable({ }, { __mode = 'v' })
 local function get_string(offset)
     local ret = strcache[offset]
     if not ret then
-        ret = ffi.string(lC.cdefdb_stmt_strings + offset)
+        ret = ffi_string(lC.cdefdb_stmt_strings + offset)
         strcache[offset] = ret
     end
     return ret
@@ -233,7 +234,7 @@ local function emit(to_dump, ldbg)
                 local s = '/* circular */ ' ..
                     keyword_for_kind[kind] .. ' '..get_string(stmt.name)..';'
                 ldbg(s)
-                ffi.cdef(s)
+                cdef(s)
                 visited[idx] = 3
                 return
             else
@@ -253,7 +254,7 @@ local function emit(to_dump, ldbg)
         else
             local s = get_string(stmt.extent)..';'
             ldbg(s)
-            ffi.cdef(s)
+            cdef(s)
         end
         visited[idx] = 1
     end
@@ -267,7 +268,7 @@ local function emit(to_dump, ldbg)
     end
     for i = 1, #macros do
         ldbg(macros[i])
-        ffi.cdef(macros[i])
+        cdef(macros[i])
     end
 
     ldbg(']==]')
