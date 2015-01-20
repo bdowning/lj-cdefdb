@@ -396,175 +396,90 @@ if dbg == print then
     end
 end
 
-if false then
-    local to_dump = { }
-    local visited = { }
-    local struct_breakers = { }
-    local function dump(tag, indent)
-        indent = indent or ''
-        local stmt = stmts[tag]
-        -- dbg('## '..indent..'dumping', stmt.kind, stmt.name)
-        if visited[stmt.tag] == 'temporary' then
-            -- if stmt[1] == 'TypedefDecl' then
-            --     dbg('temp typedef inner', stmt.typedef_inner)
-            --     dbg('temp typedef inner kind', stmt.typedef_inner[1])
-            --     dbg('temp typedef inner name', stmt.typedef_inner.name)
-            -- end
-            if stmt.kind == 'StructDecl' then
-                if not struct_breakers[stmt.name] then
-                    print('# circular struct breaker')
-                    print('struct '..stmt.name..';')
-                    struct_breakers[stmt.name] = true
-                end
-            elseif stmt.kind == 'UnionDecl' then
-                if not struct_breakers[stmt.name] then
-                    print('# circular union breaker')
-                    print('union '..stmt.name..';')
-                    struct_breakers[stmt.name] = true
-                end
-            else
-                error('circular! '.. stmt.kind ..' '.. stmt.name)
-            end
-        end
-        if visited[stmt.tag] then return end
-        visited[stmt.tag] = 'temporary'
-        -- dbg(indent..'dump', stmt[2])
-        for dep, _ in pairs(stmt.deps) do
-            -- dbg(indent..'dump deps', i, d)
-            if stmts[dep] and stmts[dep].tag ~= tag then
-                dump(dep, indent..'  ')
-            end
-        end
-        for dep, _ in pairs(stmt.delayed_deps) do
-            -- dbg(indent..'dump delayed_deps', d)
-            to_dump[#to_dump + 1] = dep
-        end
-        print('# idx '..stmt.idx..' ('..stmt.tag..')')
-        print(stmt.extent..';')
-        visited[stmt.tag] = true
-    end
+local function to_c_string_literal(str)
+    return '"' .. str
+        :gsub('\\', '\\\\')
+        :gsub('"', '\\"')
+        :gsub('\n', '\\n"\n"')
+        .. '\\0"'
+end
 
-    for tag, stmt in pairs(stmts) do
-        if false
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'sqlite3_vfs_register')
-          or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_start'))
-          or (stmt.kind == 'FunctionDecl' and stmt.name:match('ev_.*_stop'))
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'open') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'close') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'read') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'write') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'socket') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'bind') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'connect') 
-          or (stmt.kind == 'StructDecl' and stmt.name == 'sockaddr_in') 
-          or (stmt.kind == 'StructDecl' and stmt.name == 'sockaddr_in6') 
-          or (stmt.kind == 'StructDecl' and stmt.name == 'sockaddr_storage') 
-          or (stmt.kind == 'FunctionDecl' and stmt.name == 'clang_getCursorSpelling') 
-          or (stmt.kind == 'TypedefDecl' and stmt.name == 'foo') 
-          -- or (stmt.kind == 'StructDecl' and stmt.name == '_IO_FILE') 
-        then
-        --if stmt.file == '/usr/include/sqlite3.h' then
-            to_dump[#to_dump + 1] = stmt.tag
+local dns = { -1 }
+local dns_i = 1
+local dnmap = { ['-1'] = 0 }
+local function intern_dn(dn)
+    local key = table.concat(dn, ',')
+    if not dnmap[key] then
+        for i = 1, #dn do
+            dns[#dns + 1] = dn[i]
         end
+        dnmap[key] = dns_i
+        dns_i = dns_i + #dn
     end
+    return dnmap[key]
+end
+local strings = { }
+local strings_n = { }
+local strings_i = 0
+local stringmap = { }
+local function intern_string(str)
+    str = str
+    if not stringmap[str] then
+        strings[#strings + 1] = str
+        stringmap[str] = strings_i
+        strings_n[#strings_n + 1] = strings_i
+        strings_i = strings_i + #str + 1
+    end
+    return stringmap[str]
+end
 
-    io.stdout:write[[
-local ffi = require 'ffi'
-ffi.cdef[==[
-]]
-    local i = 1
-    while i <= #to_dump do
-        -- dbg('dump', i, #to_dump, to_dump[i])
-        dump(to_dump[i])
-        i = i + 1
+local stmt_i = { }
+for tag, stmt in pairs(stmts) do
+    local deps, delayed_deps = { }, { }
+    for tag, _ in pairs(stmt.deps) do
+        if stmts[tag] then
+            deps[#deps + 1] = stmts[tag].idx - 1
+        end
     end
-    io.stdout:write[[
-]==]
-]]
-else
-    local function to_c_string_literal(str)
-        return '"' .. str
-            :gsub('\\', '\\\\')
-            :gsub('"', '\\"')
-            :gsub('\n', '\\n"\n"')
-            .. '\\0"'
+    for tag, _ in pairs(stmt.delayed_deps) do
+        if stmts[tag] then
+            delayed_deps[#delayed_deps + 1] = stmts[tag].idx - 1
+        end
     end
+    table.sort(deps)
+    table.sort(delayed_deps)
+    deps[#deps + 1] = -1
+    delayed_deps[#delayed_deps + 1] = -1
+    stmt.deps_dn = intern_dn(deps)
+    stmt.delayed_deps_dn = intern_dn(delayed_deps)
+    stmt_i[stmt.idx] = stmt
+end
 
-    local dns = { -1 }
-    local dns_i = 1
-    local dnmap = { ['-1'] = 0 }
-    local function intern_dn(dn)
-        local key = table.concat(dn, ',')
-        if not dnmap[key] then
-            for i = 1, #dn do
-                dns[#dns + 1] = dn[i]
-            end
-            dnmap[key] = dns_i
-            dns_i = dns_i + #dn
-        end
-        return dnmap[key]
+local constants = { }
+for e, tag in pairs(enums) do
+    constants[e] = stmts[tag]
+end
+for m, tag in pairs(macros) do
+    if not constants[m] and consts[m] then
+        constants[m] = stmts[tag]
     end
-    local strings = { }
-    local strings_n = { }
-    local strings_i = 0
-    local stringmap = { }
-    local function intern_string(str)
-        str = str
-        if not stringmap[str] then
-            strings[#strings + 1] = str
-            stringmap[str] = strings_i
-            strings_n[#strings_n + 1] = strings_i
-            strings_i = strings_i + #str + 1
-        end
-        return stringmap[str]
-    end
+end
+local constants_i = { }
+for c, stmt in pairs(constants) do
+    table.insert(constants_i, {
+        name = c,
+        stmt = stmt
+    })
+end
+table.sort(constants_i, function (a, b) return a.name < b.name end)
+for _, c in ipairs(constants_i) do
+    -- so it's sorted/consistent
+    c.name_i = intern_string(c.name)
+end
 
-    local stmt_i = { }
-    for tag, stmt in pairs(stmts) do
-        local deps, delayed_deps = { }, { }
-        for tag, _ in pairs(stmt.deps) do
-            if stmts[tag] then
-                deps[#deps + 1] = stmts[tag].idx - 1
-            end
-        end
-        for tag, _ in pairs(stmt.delayed_deps) do
-            if stmts[tag] then
-                delayed_deps[#delayed_deps + 1] = stmts[tag].idx - 1
-            end
-        end
-        table.sort(deps)
-        table.sort(delayed_deps)
-        deps[#deps + 1] = -1
-        delayed_deps[#delayed_deps + 1] = -1
-        stmt.deps_dn = intern_dn(deps)
-        stmt.delayed_deps_dn = intern_dn(delayed_deps)
-        stmt_i[stmt.idx] = stmt
-    end
-
-    local constants = { }
-    for e, tag in pairs(enums) do
-        constants[e] = stmts[tag]
-    end
-    for m, tag in pairs(macros) do
-        if not constants[m] and consts[m] then
-            constants[m] = stmts[tag]
-        end
-    end
-    local constants_i = { }
-    for c, stmt in pairs(constants) do
-        table.insert(constants_i, {
-            name = c,
-            stmt = stmt
-        })
-    end
-    table.sort(constants_i, function (a, b) return a.name < b.name end)
-    for _, c in ipairs(constants_i) do
-        -- so it's sorted/consistent
-        c.name_i = intern_string(c.name)
-    end
-
-    io.stdout:write('const int cdefdb_num_stmts = '..#stmt_i..';\n')
-    io.stdout:write([[const struct {
+io.stdout:write('const int cdefdb_num_stmts = '..#stmt_i..';\n')
+io.stdout:write([[
+const struct {
     int name;
     int kind;
     int extent;
@@ -572,94 +487,71 @@ else
     int deps;
     int delayed_deps;
 } cdefdb_stmts[] = {]], '\n')
-    for i, stmt in ipairs(stmt_i) do
-        local t = {
-            intern_string(stmt.name),
-            intern_string(stmt.kind),
-            intern_string(stmt.extent),
-            intern_string(stmt.file),
-            stmt.deps_dn,
-            stmt.delayed_deps_dn,
-        }
-        io.stdout:write('    /* '..(i-1)..' */ { '..table.concat(t, ', ')..' },\n')
-    end
-    io.stdout:write('};\n')
-    io.stdout:write('const char *cdefdb_stmt_strings =')
-    for i, str in ipairs(strings) do
-        io.stdout:write('\n    /* '..strings_n[i]..' */ ', to_c_string_literal(str))
-    end
-    io.stdout:write(';\n')
-    local function emit_int_array(name, t, key)
-        key = key or function (e) return e end
-        io.stdout:write('const int '..name..'[] = {')
-        for i = 1, #t do
-            if (i - 1) % 8 == 0 then
-                io.stdout:write('\n    /* '..(i - 1)..' */')
-            end
-            io.stdout:write(' '..key(t[i])..',')
+for i, stmt in ipairs(stmt_i) do
+    local t = {
+        intern_string(stmt.name),
+        intern_string(stmt.kind),
+        intern_string(stmt.extent),
+        intern_string(stmt.file),
+        stmt.deps_dn,
+        stmt.delayed_deps_dn,
+    }
+    io.stdout:write('    /* '..(i-1)..' */ { '..table.concat(t, ', ')..' },\n')
+end
+io.stdout:write('};\n')
+
+io.stdout:write('const char *cdefdb_stmt_strings =')
+for i, str in ipairs(strings) do
+    io.stdout:write('\n    /* '..strings_n[i]..' */ ', to_c_string_literal(str))
+end
+io.stdout:write(';\n')
+
+local function emit_int_array(name, t, key)
+    key = key or function (e) return e end
+    io.stdout:write('const int '..name..'[] = {')
+    for i = 1, #t do
+        if (i - 1) % 8 == 0 then
+            io.stdout:write('\n    /* '..(i - 1)..' */')
         end
-        io.stdout:write('\n};\n')
+        io.stdout:write(' '..key(t[i])..',')
     end
-    emit_int_array('cdefdb_stmt_deps', dns)
-    io.stdout:write('const int cdefdb_num_constants = '..#constants_i..';\n')
-    io.stdout:write([[
+    io.stdout:write('\n};\n')
+end
+emit_int_array('cdefdb_stmt_deps', dns)
+
+io.stdout:write('const int cdefdb_num_constants = '..#constants_i..';\n')
+io.stdout:write([[
 const struct {
     int name;
     int stmt;
 } cdefdb_constants_idx[] = {]], '\n')
-    for i, c in ipairs(constants_i) do
-        io.stdout:write(string.format('    /* %d */ { %d, %d }, /* %s */\n',
-                                      i-1, c.name_i, c.stmt.idx-1, c.name))
-    end
-    io.stdout:write('};\n')
-    local function sort3keys(a, b, c)
-        return function (x, y)
-            if x[a] == y[a] then
-                if x[b] == y[b] then
-                    return x[c] < y[c]
-                end
-                return x[b] < y[b]
-            end
-            return x[a] < y[a]
-        end
-    end
-    local function emit_stmt_idx(a, b, c)
-        table.sort(stmt_i, sort3keys(a, b, c))
-        emit_int_array(string.format('cdefdb_stmt_index_%s_%s_%s',
-                                     a, b, c),
-                       stmt_i,
-                       function (stmt) return stmt.idx-1 end)
-    end
-    emit_stmt_idx('file', 'kind', 'name')
-    emit_stmt_idx('file', 'name', 'kind')
-    emit_stmt_idx('kind', 'file', 'name')
-    emit_stmt_idx('kind', 'name', 'file')
-    emit_stmt_idx('name', 'file', 'kind')
-    emit_stmt_idx('name', 'kind', 'file')
+for i, c in ipairs(constants_i) do
+    io.stdout:write(string.format('    /* %d */ { %d, %d }, /* %s */\n',
+                                  i-1, c.name_i, c.stmt.idx-1, c.name))
 end
+io.stdout:write('};\n')
 
--- local function expand(token, visited, indent)
---     indent = indent or ''
---     print(indent..'expand', token)
---     local tag = macros[token]
---     if not tag then return { token } end
---     if visited[token] then
---         print(indent..'  recursed on', token)
---         return token
---     end
---     visited[token] = true
---     local stmt = stmts[tag]
---     print(indent..'  <'..stmt.extent..'>')
---     local ret = { }
---     if stmt.params then
---         print(indent..'  unhandled params', token)
---         ret = { token }
---     else
---         for i, t in ipairs(stmt.tokens) do
---             tappend(ret, expand(t.extent, visited, indent..'  '))
---         end
---     end
---     const_test(token, ret, indent)
---     visited[token] = false
---     return ret
--- end
+local function sort3keys(a, b, c)
+    return function (x, y)
+        if x[a] == y[a] then
+            if x[b] == y[b] then
+                return x[c] < y[c]
+            end
+            return x[b] < y[b]
+        end
+        return x[a] < y[a]
+    end
+end
+local function emit_stmt_idx(a, b, c)
+    table.sort(stmt_i, sort3keys(a, b, c))
+    emit_int_array(string.format('cdefdb_stmt_index_%s_%s_%s',
+                                 a, b, c),
+                   stmt_i,
+                   function (stmt) return stmt.idx-1 end)
+end
+emit_stmt_idx('file', 'kind', 'name')
+emit_stmt_idx('file', 'name', 'kind')
+emit_stmt_idx('kind', 'file', 'name')
+emit_stmt_idx('kind', 'name', 'file')
+emit_stmt_idx('name', 'file', 'kind')
+emit_stmt_idx('name', 'kind', 'file')
