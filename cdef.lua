@@ -33,17 +33,16 @@ const int cdefdb_stmt_index_name_kind_file[];
 int cdefdb_strcmp(const char *s1, const char *s2) asm("strcmp");
 ]]
 
-local cdefdb_so_path = './cdefdb.so'
+local cdefdb_so_path
 for p in package.cpath:gmatch('[^;]+') do
     local path = (p:match('^.*/') or '') .. 'cdefdb.so'
     local fh = io.open(path)
     if fh then
-        print('match', path)
-        cdefdb_so_path = path
+        cdefdb_so_path = cdefdb_so_path or path
         fh:close()
     end
 end
-local lC = ffi.load(cdefdb_so_path)
+local lC = ffi.load(cdefdb_so_path or 'cdefdb.so')
 
 local strcache = setmetatable({ }, { __mode = 'v' })
 local function get_string(offset)
