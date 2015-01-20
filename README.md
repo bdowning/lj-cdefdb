@@ -68,7 +68,8 @@ Thanks
 
 Thanks to Philipp Kutin for [ljclang](https://github.com/helixhorned/ljclang).
 
-License
--------
+Copyright and License
+---------------------
 
+Copyright © 2014–2015 [Brian Downing](https://github.com/bdowning).
 [MIT License.](LICENSE)

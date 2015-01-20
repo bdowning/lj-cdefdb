@@ -1,5 +1,7 @@
 #!/usr/bin/env luajit
 
+-- Copyright (C) 2014-2015 Brian Downing.  MIT License.
+
 local dbg = function () end
 -- dbg = print
 

@@ -1,3 +1,5 @@
+-- Copyright (C) 2014-2015 Brian Downing.  MIT License.
+
 local ffi = require 'ffi'
 
 local cdef, C, floor, min = ffi.cdef, ffi.C, math.floor, math.min
