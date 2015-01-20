@@ -19,7 +19,7 @@ ls -l "$pp_output"
 
 cd "$script_dir/ljclang"
 make
-LD_LIBRARY_PATH=. luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
+LD_LIBRARY_PATH=.:${LD_LIBRARY_PATH:-.} luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
 cd "$orig_dir"
 
 ${CC:-cc} -fPIC -shared -o cdefdb.so cdefdb.c
