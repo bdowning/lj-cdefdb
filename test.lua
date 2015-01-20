@@ -202,9 +202,14 @@ function recurse(cur, indent, visited)
     end
     local isdef = (cur:haskind("FunctionDecl")) and cur:isDefinition()
     local file, row, col = cur:presumedLocation()
-    print(string.format("%s[%12s%s] %50s <- %s (%s:%d:%d - %s)", indent, cur:kind(),
-                        isdef and " (def)" or "", tostring(cur), tostring(cur:type()),
+    local type = cur:type()
+    print(string.format("%s[%12s%s] %50s <- %s <%s> (%s:%d:%d - %s)", indent, cur:kind(),
+                        isdef and " (def)" or "", tostring(cur), tostring(type), type and tonumber(type:kindnum()),
                         file or '?', row or 0, col or 0, tag))
+    if cur:haskind("TypedefDecl") then
+        local tdtype = cur:typedefType()
+        print(string.format("%sTypedef type: %s <%s>", indent..'  ', tdtype, tonumber(tdtype:kindnum())))
+    end
     if cur:haskind("MacroDefinition") then
         local indent = indent..'  '
         local toks = cur:_tokens()
@@ -214,10 +219,10 @@ function recurse(cur, indent, visited)
             end
         end
     end
-    if cur:haskind("TypeRef") and not visited then
-        local visited = { [tag] = true }
-        recurse(cur:type():declaration(), indent .. '  TYPE-> ', visited)
-    end
+    -- if cur:haskind("TypeRef") and not visited then
+    --     local visited = { [tag] = true }
+    --     recurse(cur:type():declaration(), indent .. '  TYPE-> ', visited)
+    -- end
     local kids = cur:children()
     for i, k in ipairs(kids) do
         recurse(k, indent .. '  ', visited)
