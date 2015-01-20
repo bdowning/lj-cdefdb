@@ -9,6 +9,13 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+llvm=/usr
+for d in /usr/lib/llvm-3.5 /usr/lib/llvm-3.4 /usr /usr/local; do
+    if [ -e "$d"/include/clang-c/Index.h -a -e "$d"/lib/libclang.so ]; then
+        llvm="$d"
+    fi
+done
+
 orig_dir="$(pwd)"
 script_dir="$(dirname "$0")"
 file="$1"; shift
@@ -20,8 +27,8 @@ ${CLANG:-clang} -E -dD "$@" "$file" > "$pp_output"
 ls -l "$pp_output"
 
 cd "$script_dir/ljclang"
-make libljclang_support.so
-LD_LIBRARY_PATH=.:${LD_LIBRARY_PATH:-.} luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
+make inc="$llvm"/include libdir="$llvm"/lib libljclang_support.so
+LD_LIBRARY_PATH=.:"$llvm"/lib:${LD_LIBRARY_PATH:-.} luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
 cd "$orig_dir"
 
 ${CC:-cc} -fPIC -shared -o cdefdb.so cdefdb.c
