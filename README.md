@@ -1,4 +1,4 @@
-lj-cdefdb - An auto-generated cdef database for LuaJIT
+lj-cdefdb — An auto-generated cdef database for LuaJIT
 ======================================================
 
 Introduction
