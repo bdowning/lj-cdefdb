@@ -24,7 +24,7 @@ Database Generation
 
 The `gen-cdefdb` command is used to generate the database.  It takes
 as input a C file that should include every header file whose
-definitons are required in the database.  The usage of this is:
+definitions are required in the database.  The usage of this is:
 ```
 ./gen-cdefdb file.c <cc args...>
 ```
