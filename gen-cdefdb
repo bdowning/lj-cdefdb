@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -e
+
+if [ -z "$1" ]; then
+    echo Usage: $0 file.c '<cc args...>' >&2
+    exit 1
+fi
+
+orig_dir="$(pwd)"
+script_dir="$(dirname "$0")"
+file="$1"; shift
+
+pp_output="/tmp/lj-cdefdb-preprocessed$$.c"
+trap "rm -f $pp_output" 0
+${CLANG:-clang} -E -dD "$@" "$file" > "$pp_output"
+
+ls -l "$pp_output"
+
+cd "$script_dir/ljclang"
+make
+LD_LIBRARY_PATH=. luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
+cd "$orig_dir"
+
+${CC:-cc} -fPIC -shared -o cdefdb.so cdefdb.c
