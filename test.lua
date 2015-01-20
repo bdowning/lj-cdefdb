@@ -69,7 +69,7 @@ assert(cur:haskind("TranslationUnit"))
 -- end)
 
 -- cur:children(visitor)
-if false then
+if true then
 do
     local cacheF = setmetatable({}, {__mode="k"})
     function getExtent(file, fromOffs, toOffs)
@@ -98,14 +98,15 @@ function store_stmts(tu_cursor)
     local extra_tag
     for i, cur in ipairs(curs) do
         if not cur:kind():match('^Macro') and not cur:haskind('InclusionDirective') and not (cur:haskind('FunctionDecl') and cur:isDefinition()) then
+            local _, b, e = cur:location()
             local tag = cursor_tag(cur)
             local next_cur = curs[i + 1]
             local skip = false
-            if next_cur and next_cur:haskind('TypedefDecl') then
+            if b and next_cur and next_cur:haskind('TypedefDecl') then
                 local next_kids = next_cur:children()
                 if next_kids[1] then
-                    local next_kid_tag = cursor_tag(next_kids[1])
-                    if next_kid_tag == tag then
+                    local _, nb, ne = next_kids[1]:location()
+                    if nb and nb <= b and ne >= e then
                         extra_tag = tag
                         skip = true
                     end
@@ -114,12 +115,18 @@ function store_stmts(tu_cursor)
             if not skip then
                 local file = cur:presumedLocation()
                 local slot = #stmts + 1
-                local stmt = { cur:kind(), getExtent(cur:location('offset')), file = file, tag = tag, deps = { } }
-                local deps = { }
-                find_deps(cur, deps)
-                for t, _ in pairs(deps) do
-                    if t ~= tag then
-                        stmt.deps[#stmt.deps + 1] = t
+                local stmt = { cur:kind(), getExtent(cur:location('offset')), name = cur:name(),
+                               file = file, tag = tag,
+                               deps = { }, delayed_deps = { } }
+                local deps = { deps = { }, delayed_deps = { } }
+                local stack = { }
+                find_deps(cur, stack, 1, deps)
+                for m, d in pairs(deps) do
+                    for t, _ in pairs(d) do
+                        print(tag, m, t)
+                        if t ~= tag then
+                            stmt[m][#stmt[m] + 1] = t
+                        end
                     end
                 end
                 stmts[slot] = stmt
@@ -133,52 +140,115 @@ function store_stmts(tu_cursor)
     end
 end
 
-function find_deps(cur, deps)
-    if cur:haskind('TypeRef') then
+function find_deps(cur, stack, level, deps)
+    print('find_deps', cur:kind(), cur, level, cursor_tag(cur))
+    stack[level] = cur
+    if not cur:location() then
+        -- skip
+    elseif cur:haskind('FieldDecl') then
+        local type = cur:type()
+        local ctype = type:canonical()
+        -- print(type, type:kindnum())
+        -- print(ctype, ctype:kindnum())
+        if type:haskind('Typedef') then
+            local decl = type:declaration()
+            if decl:location() then
+                deps.deps[cursor_tag(decl)] = true
+            end
+        end
+        if ctype:haskind('Record') then
+            local decl = ctype:declaration()
+            if decl:location() then
+                deps.deps[cursor_tag(decl)] = true
+            end
+        else
+            for i, kid in ipairs(cur:children()) do
+                find_deps(kid, stack, level + 1, deps)
+            end
+        end
+    elseif cur:haskind('TypedefDecl') then
+        deps.delayed_deps[cursor_tag(cur:typedefType():canonical():declaration())] = true
+    elseif cur:haskind('TypeRef') then
+        local mode = 'deps'
+        if level == 2 and stack[level - 1]:haskind('TypedefDecl') then
+            mode = 'delayed_deps'
+        end
+        -- if stack[level - 1]:type()
         local decl = cur:type():declaration()
-        deps[cursor_tag(decl)] = true
+        if decl:location() then
+            deps[mode][cursor_tag(decl)] = true
+        end
     else
         for i, kid in ipairs(cur:children()) do
-            find_deps(kid, deps)
+            find_deps(kid, stack, level + 1, deps)
         end
     end
+    stack[level] = nil
 end
 
 store_stmts(cur)
 
 local to_dump = { }
 for i, s in ipairs(stmts) do
+    print(s[1], s.name)
     if s[2]:match(
-        'struct ev_loop.*ev_default_loop%s*%('
+        '^struct foo {'
+        --'^typedef struct .* CXIdxEntityInfo$'
+        --'struct ev_loop.*ev_default_loop%s*%('
         --'^struct ev_loop%s*{'
-    ) or s.file == '/usr/include/sqlite3.h' then
-        to_dump[#to_dump + 1] = s.tag
+    ) or (s[1] == 'FunctionDecl' and s.name == 'sqlite3_open') then
+        local slot = stmts_by_tag[s.tag]
+        if slot then
+            to_dump[#to_dump + 1] = slot
+        end
     end
 end
 
 local visited = { }
-local function dump(cur)
-    local slot = stmts_by_tag[cur]
+local function dump(slot)
+    local cur = stmts[slot].tag
+    if visited[slot] == 'temporary' then
+        local stmt = stmts[slot]
+        if stmt[1] == 'StructDecl' then
+            print('# circular struct breaker')
+            print('struct '..stmt.name..';')
+        else
+            error('circular! '.. stmts[slot][1] ..' '.. stmts[slot].name)
+        end
+    end
     if visited[slot] then return end
-    visited[slot] = true
+    visited[slot] = 'temporary'
     if not slot then
-        print('null stmt for', cur)
+        print('# null stmt for', cur)
         return
     end
     local stmt = stmts[slot]
     for i, d in ipairs(stmt.deps) do
-        dump(d)
+        print('dump deps', d)
+        if stmts_by_tag[d] then
+            dump(stmts_by_tag[d])
+        end
+    end
+    for i, d in ipairs(stmt.delayed_deps) do
+        print('dump delayed_deps', d)
+        if stmts_by_tag[d] then
+            table.insert(to_dump, stmts_by_tag[d])
+        end
     end
     print('#'..cur)
     print(stmt[2]..';')
+    visited[slot] = true
 end
 
 io.stdout:write[[
 local ffi = require 'ffi'
 ffi.cdef[==[
 ]]
-for i, tag in ipairs(to_dump) do
-    dump(tag)
+local i = 1
+while i <= #to_dump do
+    print('dump', i, #to_dump)
+    dump(to_dump[i])
+    i = i + 1
 end
 io.stdout:write[[
 ]==]
