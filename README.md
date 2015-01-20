@@ -14,9 +14,11 @@ Prerequisites
 
 lj-cdefdb uses [Clang](http://clang.llvm.org/) as its C parser.  This
 will need to be installed.  For Debian derivatives, something like
+
 ```
 # apt-get install clang-3.5 libclang-3.5-dev
 ```
+
 should work fine.  Also obviously LuaJIT must be installed.
 
 Database Generation
@@ -25,9 +27,11 @@ Database Generation
 The `gen-cdefdb` command is used to generate the database.  It takes
 as input a C file that should include every header file whose
 definitions are required in the database.  The usage of this is:
+
 ```
 ./gen-cdefdb file.c <cc args...>
 ```
+
 This generates `cdefdb.so` (and `cdefdb.c`) in the current directory.
 
 Usage
@@ -35,6 +39,7 @@ Usage
 
 Copy `cdef.lua` to your lua share directory and `cdefdb.so` to your
 lua lib directory.  Then you can do, for example:
+
 ```lua
 require 'cdef' {
     functions = { 'open', 'read', 'write', 'close' },
@@ -55,6 +60,7 @@ of a single-entry table.
 
 Finally, a glob-style star can be used at the end (and only the end)
 of a name:
+
 ```lua
 require 'cdef' { constants = 'O_*' }
 ```
