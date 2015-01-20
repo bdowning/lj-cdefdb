@@ -28,11 +28,6 @@ definitions are required in the database.  The usage of this is:
 ```
 ./gen-cdefdb file.c <cc args...>
 ```
-For systems that put libclang.so in weird places (i.e. Debian derivatives)
-you may have to add an appropriate LD_LIBRARY_PATH to the above:
-```
-LD_LIBRARY_PATH=/usr/lib/llvm-3.5/lib ./gen-cdefdb file.c <cc args...>
-```
 This generates `cdefdb.so` (and `cdefdb.c`) in the current directory.
 
 Usage
