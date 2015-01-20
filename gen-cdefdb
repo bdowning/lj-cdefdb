@@ -20,7 +20,7 @@ ${CLANG:-clang} -E -dD "$@" "$file" > "$pp_output"
 ls -l "$pp_output"
 
 cd "$script_dir/ljclang"
-make
+make libljclang_support.so
 LD_LIBRARY_PATH=.:${LD_LIBRARY_PATH:-.} luajit ../process.lua "$pp_output" > "$orig_dir/cdefdb.c"
 cd "$orig_dir"
 
