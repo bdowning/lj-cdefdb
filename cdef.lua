@@ -292,8 +292,10 @@ end
 
 local kindmap = {
     functions = 'FunctionDecl',
+    variables = 'VarDecl',
     structs = 'StructDecl',
     unions = 'UnionDecl',
+    enums = 'EnumDecl',
     typedefs = 'TypedefDecl',
 }
 

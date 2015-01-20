@@ -45,9 +45,10 @@ require 'cdef' {
 dependencies, into the LuaJIT FFI C namespace.
 
 In addition to `functions` and `constants`, you can also request
-`structs`, `unions`, and `typedefs`.  (Structs and unions should not
-include 'struct' and 'union' in their names.)  Also, by adding
-`verbose = true`, it will print out the cdefs that are occurring.
+`variables`, `structs`, `unions`, `enums`, and `typedefs`.  (Structs,
+unions, and enums should not include `struct`, `union`, or `enum` in
+their names.)  Also, by adding `verbose = true`, it will print out the
+cdefs that are occurring.
 
 If there is only one of a type requested a string can be used instead
 of a single-entry table.
