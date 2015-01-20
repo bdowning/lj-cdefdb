@@ -65,6 +65,70 @@ of a name:
 require 'cdef' { constants = 'O_*' }
 ```
 
+cdef Helper Utility
+-------------------
+
+`cdef-helper` is a tool to help convert `ffi.cdef` statements (as may
+be seen in existing code) into `require 'cdef'` statements.  Its usage
+is:
+
+```
+./cdef-helper cdef_bodies.c <cc args...>
+```
+
+Its input should consist of the bodies of the ffi.cdef you'd like to
+convert.  For example:
+
+```
+$ cat /tmp/foo.c
+void *malloc(size_t sz);
+void *realloc(void*ptr, size_t size);
+void free(void *ptr);
+int sprintf(char *str, const char *format, ...);
+int printf(const char *format, ...);
+$ ./cdef-helper /tmp/foo.c
+require 'cdef' {
+    functions = {
+        'free',
+        'malloc',
+        'printf',
+        'realloc',
+        'sprintf',
+    },
+}
+```
+
+Additionally, you can add `__emit__();` in the input file to cause a
+`require 'cdef'` statement to be emitted immediately; this is useful
+for files that have multiple sequential `ffi.cdef` statements mixed
+with other code:
+
+```
+$ cat /tmp/foo.c
+void *malloc(size_t sz);
+void *realloc(void*ptr, size_t size);
+void free(void *ptr);
+__emit__();
+int socket(int domain, int type, int protocol);
+int bind(int fd, const struct sockaddr *addr, socklen_t len);
+int listen(int fd, int backlog);
+$ ./cdef-helper /tmp/foo.c
+require 'cdef' {
+    functions = {
+        'free',
+        'malloc',
+        'realloc',
+    },
+}
+require 'cdef' {
+    functions = {
+        'bind',
+        'listen',
+        'socket',
+    },
+}
+```
+
 Thanks
 ------
 
