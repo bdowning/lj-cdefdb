@@ -80,8 +80,11 @@ function strip_hashes(str)
     return str
 end
 
+local redef_tag = '__LJ_CDEFDB_REDEFINED__'
+
 local stmts = { }
 local stmt_idx = 1
+local kind_name_map = { }
 
 local struct_dep_mode = 'delayed_deps'
 local typedef_ends = { }
@@ -102,20 +105,47 @@ function store_stmt(cur)
     local tag = cursor_tag(cur)
     if stmts[tag] then return end
 
-    local realfile = cur:location()
-    local file = cur:presumedLocation()
+    local realfile, rr1, rc1 = cur:location()
+    local file, pr1, pc1 = cur:presumedLocation()
     if realfile == '???' then return end
     local stmt = {
         name = cur:name(),
         kind = cur:kind(),
         extent = strip_hashes(getExtent(cur:location('offset'))),
         file = file,
+        pr1 = pr1, pc1 = pc1,
         tag = tag,
         deps = { },
         delayed_deps = { },
         no_deps = { },
         idx = stmt_idx,
     }
+    if stmt.name:match(redef_tag) then
+        stmt.name = stmt.name:gsub(redef_tag, '')
+        stmt.extent = stmt.extent:gsub(redef_tag, '')
+    end
+    local redefined = false
+    if stmt.name ~= '' and not cur:haskind('MacroDefinition') then
+        local kindname = stmt.kind..','..stmt.name
+        if kind_name_map[kindname] then
+            local old_tag = kind_name_map[kindname]
+            local old_stmt = stmts[old_tag]
+            if not cur:name():match(redef_tag) then
+                io.stderr:write(
+                    string.format('Warning: %s "%s" redefined:\n' ..
+                                      '    Old %s:%d:%d\n' ..
+                                      '    New %s:%d:%d\n',
+                                  stmt.kind, stmt.name,
+                                  old_stmt.file, old_stmt.pr1, old_stmt.pc1,
+                                  file, pr1, pc1))
+            end
+            tag = old_tag
+            stmt.tag = old_tag
+            stmt.idx = old_stmt.idx
+            redefined = true
+        end
+        kind_name_map[kindname] = tag
+    end
 
     if cur:haskind('MacroDefinition') then
         stmt.extent = stmt.extent:sub(#stmt.name + 1)
@@ -146,7 +176,9 @@ function store_stmt(cur)
     end
 
     stmts[tag] = stmt
-    stmt_idx = stmt_idx + 1
+    if not redefined then
+        stmt_idx = stmt_idx + 1
+    end
     -- dbg('tag', tag)
 
     find_deps(cur, nil, struct_dep_mode, stmt)
