@@ -2,6 +2,11 @@
 
 -- Copyright (C) 2014-2015 Brian Downing.  MIT License.
 
+local transparent_union_blacklist = {
+    -- glibc __WAIT_STATUS (old 4.1BSD union wait * is first)
+    'union%s+wait%s+%*',
+}
+
 local function tmap(t, f)
     local r = { }
     for i = 1, #t do
@@ -169,8 +174,15 @@ function store_stmt(cur)
         if not f then
             errprintf('Warning: Likely UNSUPPORTED pragma: %s "%s" %s:%d:%d\n',
                       stmt.kind, stmt.name, file, pr1, pc1)
-        elseif ab < b or ae > e then
-            table.insert(stmt.outside_attrs, strip_hashes(getExtent(f, ab, ae)))
+        else
+            local attr_extent = strip_hashes(getExtent(f, ab, ae))
+            if attr_extent:match('transparent_union') then
+                stmt.transparent_union = true
+            else
+                if ab < b or ae > e then
+                    table.insert(stmt.outside_attrs, attr_extent)
+                end
+            end
         end
     end
 
@@ -251,13 +263,48 @@ function store_stmt(cur)
         local td_basetype = base_type(cur:typedefType())
         local decl = td_basetype:declaration()
         local _, kb, ke = decl:location('offset')
+        local inner_stmt = stmts[cursor_tag(decl)]
         dbg('\ntypedef', f, b, kb, ke, e, decl:kind(), decl:name())
-        if haskind_structish(decl) and kb and b <= kb and e >= ke then
+        if inner_stmt and inner_stmt.transparent_union then
+            local fields = struct_fields(decl)
+            local override = fields[1]
+            for _, field in ipairs(fields) do
+                local extent = strip_hashes(getExtent(field:location('offset')))
+                local blacklisted = false
+                for _, blacklist in ipairs(transparent_union_blacklist) do
+                    if extent:match(blacklist) then
+                        blacklisted = true
+                    end
+                end
+                if not blacklisted then
+                    override = field
+                    break
+                end
+            end
+            local field_extent = strip_hashes(getExtent(override:location('offset')))
+            -- lop off the final identifier (field name)
+            local field_name
+            for id in field_extent:gmatch('[A-Za-z_][A-Za-z0-9_]*') do
+                field_name = id
+            end
+            -- errprint('field_name = "'..field_name..'"')
+            field_extent = field_extent:gsub('(.*)'..field_name, '%1')
+            -- errprint('override', decl:name(), field_extent)
+            stmt.extent = 'typedef '..field_extent..' '..stmt.name
+            if inner_stmt.name == '' then
+                stmt.idx = inner_stmt.idx
+                stmt_idx = stmt_idx - 1
+                stmt.inner_structish = inner_stmt
+                stmt.outside_attrs = tappend(inner_stmt.outside_attrs,
+                                             stmt.outside_attrs)
+                inner_stmt.outside_attrs = { }
+                stmts[inner_stmt.tag] = stmt
+            end
+        elseif haskind_structish(decl) and kb and b <= kb and e >= ke then
             dbg('\ntypedef', stmt.kind, 'inner', f, b, kb, ke, e, decl:name(), #struct_fields(decl))
             local orig = getExtent(f, b, e)
             local pre = orig:sub(1, kb - b)
             local post = orig:sub(ke - b + 1, e - b)
-            local inner_stmt = stmts[cursor_tag(decl)]
             if decl:name() == '' or #struct_fields(decl) == 0 then
                 -- eat anon or empty structs defined inside typedefs
                 if typedef_ends[td_starttag] then
