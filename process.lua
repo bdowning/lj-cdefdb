@@ -70,6 +70,18 @@ local function cursor_tag(cur)
     return string.format('%s:%d:%d:%d:%d', f or '?', r1 or 0, c1 or 0, r2 or 0, c2 or 0)
 end
 
+local function children_attrs(cur)
+    local non_attrs, attrs = { }, { }
+    for _, kid in ipairs(cur:children()) do
+        if kid:kind():match('Attr$') then
+            table.insert(attrs, kid)
+        else
+            table.insert(non_attrs, kid)
+        end
+    end
+    return non_attrs, attrs
+end
+
 local function struct_fields(cur)
     local fields = 0
     for i, kid in ipairs(cur:children()) do
@@ -134,7 +146,7 @@ function store_stmt(cur)
     local tag = cursor_tag(cur)
     if stmts[tag] then return end
 
-    local realfile, rr1, rc1 = cur:location()
+    local realfile, rr1, rc1, _, _, b, e = cur:location()
     local file, pr1, pc1 = cur:presumedLocation()
     if realfile == '???' then return end
     local stmt = {
@@ -148,7 +160,20 @@ function store_stmt(cur)
         delayed_deps = { },
         no_deps = { },
         idx = stmt_idx,
+        outside_attrs = { }
     }
+
+    local _, attrs = children_attrs(cur)
+    for _, attr in ipairs(attrs) do
+        local f, ab, ae = attr:location('offset')
+        if not f then
+            errprintf('Warning: Likely UNSUPPORTED pragma: %s "%s" %s:%d:%d\n',
+                      stmt.kind, stmt.name, file, pr1, pc1)
+        elseif ab < b or ae > e then
+            table.insert(stmt.outside_attrs, strip_hashes(getExtent(f, ab, ae)))
+        end
+    end
+
     if stmt.name:match(redef_tag) then
         stmt.name = stmt.name:gsub(redef_tag, '')
         stmt.extent = stmt.extent:gsub(redef_tag, '')
@@ -241,6 +266,8 @@ function store_stmt(cur)
                 for k, v in pairs(old_stmt.delayed_deps) do
                     stmt.delayed_deps[k] = v
                 end
+                stmt.outside_attrs = tjoin(old_stmt.outside_attrs,
+                                           stmt.outside_attrs)
                 stmts[cursor_tag(decl)] = stmt
             else
                 -- generate a new typedef referencing out the struct
@@ -261,6 +288,12 @@ function store_stmt(cur)
             end
             typedef_ends[td_starttag] = e
         end
+    end
+
+    if #stmt.outside_attrs > 0 then
+        stmt.extent = stmt.extent
+            .. ' /* fabricated */ __attribute__ (('
+            .. table.concat(stmt.outside_attrs, ',') .. '))'
     end
 end
 
@@ -311,7 +344,7 @@ function find_deps(cur, parent, struct_ptr_mode, stmt)
             -- skip first child (the typeref), any attached structs
             -- are crawled extra above; otherwise we get an
             -- unneccessarily-strong dependency on the struct
-            for i, kid in ipairs(cur:children()) do
+            for i, kid in ipairs(children_attrs(cur)) do
                 if i == 1 then
                     stmt[struct_dep_mode][cursor_tag(typedecl)] = true
                 else
