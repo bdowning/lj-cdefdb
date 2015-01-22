@@ -273,8 +273,9 @@ function store_stmt(cur)
                     stmt.delayed_deps[k] = v
                 end
                 stmt.inner_structish = inner_stmt
-                stmt.outside_attrs = tjoin(inner_stmt.outside_attrs,
-                                           stmt.outside_attrs)
+                stmt.outside_attrs = tappend(inner_stmt.outside_attrs,
+                                             stmt.outside_attrs)
+                inner_stmt.outside_attrs = { }
                 stmts[inner_stmt.tag] = stmt
             else
                 -- generate a new typedef referencing out the struct
