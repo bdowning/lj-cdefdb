@@ -293,12 +293,6 @@ function store_stmt(cur)
             typedef_ends[td_starttag] = e
         end
     end
-
-    if #stmt.outside_attrs > 0 then
-        stmt.extent = stmt.extent
-            .. ' /* fabricated */ __attribute__ (('
-            .. table.concat(stmt.outside_attrs, ',') .. '))'
-    end
 end
 
 function find_deps(cur, parent, struct_ptr_mode, stmt)
@@ -519,6 +513,11 @@ for _, stmt in ipairs(stmt_i) do
     delayed_deps[#delayed_deps + 1] = -1
     stmt.deps_dn = intern_dn(deps)
     stmt.delayed_deps_dn = intern_dn(delayed_deps)
+    if #stmt.outside_attrs > 0 then
+        stmt.extent = stmt.extent
+            .. ' /* fabricated */ __attribute__ (('
+            .. table.concat(stmt.outside_attrs, ',') .. '))'
+    end
 end
 
 local constants = { }
