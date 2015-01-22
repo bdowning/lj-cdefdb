@@ -254,33 +254,32 @@ function store_stmt(cur)
         dbg('\ntypedef', f, b, kb, ke, e, decl:kind(), decl:name())
         if haskind_structish(decl) and kb and b <= kb and e >= ke then
             dbg('\ntypedef', stmt.kind, 'inner', f, b, kb, ke, e, decl:name(), #struct_fields(decl))
+            local orig = getExtent(f, b, e)
+            local pre = orig:sub(1, kb - b)
+            local post = orig:sub(ke - b + 1, e - b)
+            local inner_stmt = stmts[cursor_tag(decl)]
             if decl:name() == '' or #struct_fields(decl) == 0 then
                 -- eat anon or empty structs defined inside typedefs
                 if typedef_ends[td_starttag] then
                     error("UNSUPOPRTED: multiply-defined typedefs for " ..
                           "anonymous structs (for typedef "..cur:name()..")!")
                 end
-                local old_stmt = stmts[cursor_tag(decl)]
-                stmt.idx = old_stmt.idx
+                stmt.idx = inner_stmt.idx
                 stmt_idx = stmt_idx - 1
-                for k, v in pairs(old_stmt.deps) do
+                for k, v in pairs(inner_stmt.deps) do
                     stmt.deps[k] = v
                 end
-                for k, v in pairs(old_stmt.delayed_deps) do
+                for k, v in pairs(inner_stmt.delayed_deps) do
                     stmt.delayed_deps[k] = v
                 end
-                stmt.inner_structish = old_stmt
-                stmt.outside_attrs = tjoin(old_stmt.outside_attrs,
+                stmt.inner_structish = inner_stmt
+                stmt.outside_attrs = tjoin(inner_stmt.outside_attrs,
                                            stmt.outside_attrs)
-                stmts[old_stmt.tag] = stmt
+                stmts[inner_stmt.tag] = stmt
             else
                 -- generate a new typedef referencing out the struct
                 -- by name; this avoid several kinds of circular
                 -- dependencies that are hard to work around otherwise
-                local orig = getExtent(f, b, e)
-                local struct = getExtent(f, kb, ke)
-                local pre = orig:sub(1, kb - b)
-                local post = orig:sub(ke - b + 1, e - b)
                 local old_e = typedef_ends[td_starttag]
                 if old_e then
                     post = orig
