@@ -195,6 +195,9 @@ function store_stmt(cur)
             tag = old_tag
             stmt.tag = old_tag
             stmt.idx = old_stmt.idx
+            if old_stmt.inner_structish then
+                stmts[old_stmt.inner_structish.tag] = stmt
+            end
             redefined = true
         end
         kind_name_map[kindname] = tag
@@ -266,9 +269,10 @@ function store_stmt(cur)
                 for k, v in pairs(old_stmt.delayed_deps) do
                     stmt.delayed_deps[k] = v
                 end
+                stmt.inner_structish = old_stmt
                 stmt.outside_attrs = tjoin(old_stmt.outside_attrs,
                                            stmt.outside_attrs)
-                stmts[cursor_tag(decl)] = stmt
+                stmts[old_stmt.tag] = stmt
             else
                 -- generate a new typedef referencing out the struct
                 -- by name; this avoid several kinds of circular
