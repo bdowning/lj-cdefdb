@@ -24,8 +24,15 @@ local function tjoin(...)
     return tappend({ }, ...)
 end
 
-local dbg = function () end
--- dbg = print
+local function noprint() end
+local function errprint(...)
+    io.stderr:write(table.concat(tmap({...}, tostring), ' ')..'\n')
+end
+local function errprintf(...)
+    io.stderr:write(string.format(...))
+end
+local dbg = noprint
+-- dbg = errprint
 
 assert(arg[1], "Usage: "..arg[0].." <filename> ...")
 
@@ -406,7 +413,7 @@ for m, tag in pairs(macros) do
     end
 end
 
-if dbg == print then
+if dbg ~= noprint then
     for tag, stmt in pairs(stmts) do
         print(stmt.idx, tag, stmt.kind, stmt.name, stmt.tag, stmt.tag == tag)
         for _, m in ipairs{'deps', 'delayed_deps'} do
