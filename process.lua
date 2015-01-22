@@ -2,6 +2,28 @@
 
 -- Copyright (C) 2014-2015 Brian Downing.  MIT License.
 
+local function tmap(t, f)
+    local r = { }
+    for i = 1, #t do
+        r[#r+1] = f(t[i])
+    end
+    return r
+end
+
+local function tappend(r, ...)
+    local ts = {...}
+    for _, t in ipairs(ts) do
+        for i = 1, #t do
+            r[#r+1] = t[i]
+        end
+    end
+    return r
+end
+
+local function tjoin(...)
+    return tappend({ }, ...)
+end
+
 local dbg = function () end
 -- dbg = print
 
@@ -309,41 +331,6 @@ for _, cur in ipairs(tu_cur:children()) do
     then
         store_stmt(cur)
     end
-end
-
-local function tmap(t, f)
-    local r = { }
-    for i = 1, #t do
-        r[#r+1] = f(t[i])
-    end
-    return r
-end
-
-local function tappend(r, ...)
-    local ts = {...}
-    for _, t in ipairs(ts) do
-        for i = 1, #t do
-            r[#r+1] = t[i]
-        end
-    end
-    return r
-end
-
-local function tjoin(...)
-    return tappend({ }, ...)
-end
-
-local function tsub(t, a, b)
-    a = a or 1
-    b = b or #t
-    if b < 0 then
-        b = #t + 1 - b
-    end
-    local r = { }
-    for i = a, b do
-        r[#r+1] = t[i]
-    end
-    return r
 end
 
 local consts = { }
