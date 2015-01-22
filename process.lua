@@ -276,6 +276,7 @@ function store_stmt(cur)
                 stmt.outside_attrs = tappend(inner_stmt.outside_attrs,
                                              stmt.outside_attrs)
                 inner_stmt.outside_attrs = { }
+                stmt.extent = strip_hashes(pre .. inner_stmt.extent .. post)
                 stmts[inner_stmt.tag] = stmt
             else
                 -- generate a new typedef referencing out the struct
