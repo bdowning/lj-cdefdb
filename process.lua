@@ -499,6 +499,9 @@ end
 
 local stmt_i = { }
 for tag, stmt in pairs(stmts) do
+    stmt_i[stmt.idx] = stmt
+end
+for _, stmt in ipairs(stmt_i) do
     local deps, delayed_deps = { }, { }
     for tag, _ in pairs(stmt.deps) do
         if stmts[tag] then
@@ -516,7 +519,6 @@ for tag, stmt in pairs(stmts) do
     delayed_deps[#delayed_deps + 1] = -1
     stmt.deps_dn = intern_dn(deps)
     stmt.delayed_deps_dn = intern_dn(delayed_deps)
-    stmt_i[stmt.idx] = stmt
 end
 
 local constants = { }
