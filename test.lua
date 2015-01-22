@@ -85,11 +85,11 @@ function recurse(cur, indent, visited)
         visited[tag] = true
     end
     local isdef = (cur:haskind("FunctionDecl")) and cur:isDefinition()
-    local file, row, col = cur:presumedLocation()
+    local file, row, col, erow, ecol = cur:presumedLocation()
     local type = cur:type()
-    print(string.format("%s[%12s%s] %50s <- %s <%s> (%s:%d:%d - %s)", indent, cur:kind(),
+    print(string.format("%s[%12s%s] %50s <- %s <%s> (%s::%d:%d::%d:%d - %s)", indent, cur:kind(),
                         isdef and " (def)" or "", tostring(cur), tostring(type), type and tonumber(type:kindnum()),
-                        file or '?', row or 0, col or 0, tag))
+                        file or '?', row or 0, col or 0, erow or 0, ecol or 0, tag))
     if cur:haskind("TypedefDecl") then
         local tdtype = cur:typedefType()
         local name = tdtype:name()
