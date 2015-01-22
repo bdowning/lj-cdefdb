@@ -160,13 +160,12 @@ function store_stmt(cur)
             local old_tag = kind_name_map[kindname]
             local old_stmt = stmts[old_tag]
             if not cur:name():match(redef_tag) then
-                io.stderr:write(
-                    string.format('Warning: %s "%s" redefined:\n' ..
-                                      '    Old %s:%d:%d\n' ..
-                                      '    New %s:%d:%d\n',
-                                  stmt.kind, stmt.name,
-                                  old_stmt.file, old_stmt.pr1, old_stmt.pc1,
-                                  file, pr1, pc1))
+                errprintf('Warning: %s "%s" redefined:\n' ..
+                              '    Old %s:%d:%d\n' ..
+                              '    New %s:%d:%d\n',
+                          stmt.kind, stmt.name,
+                          old_stmt.file, old_stmt.pr1, old_stmt.pc1,
+                          file, pr1, pc1)
             end
             tag = old_tag
             stmt.tag = old_tag
