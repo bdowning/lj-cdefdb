@@ -83,11 +83,11 @@ local function children_attrs(cur)
 end
 
 local function struct_fields(cur)
-    local fields = 0
+    local fields = { }
     for i, kid in ipairs(cur:children()) do
         if kid:haskind('FieldDecl') then
             -- dbg('  FieldDecl', kit)
-            fields = fields + 1
+            table.insert(fields, kid)
         end
     end
     return fields
@@ -253,8 +253,8 @@ function store_stmt(cur)
         local _, kb, ke = decl:location('offset')
         dbg('\ntypedef', f, b, kb, ke, e, decl:kind(), decl:name())
         if haskind_structish(decl) and kb and b <= kb and e >= ke then
-            dbg('\ntypedef', stmt.kind, 'inner', f, b, kb, ke, e, decl:name(), struct_fields(decl))
-            if decl:name() == '' or struct_fields(decl) == 0 then
+            dbg('\ntypedef', stmt.kind, 'inner', f, b, kb, ke, e, decl:name(), #struct_fields(decl))
+            if decl:name() == '' or #struct_fields(decl) == 0 then
                 -- eat anon or empty structs defined inside typedefs
                 if typedef_ends[td_starttag] then
                     error("UNSUPOPRTED: multiply-defined typedefs for " ..
