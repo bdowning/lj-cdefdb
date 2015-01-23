@@ -7,6 +7,45 @@ local transparent_union_blacklist = {
     'union%s+wait%s+%*',
 }
 
+local libc_nonshared_functions = {
+    { fn = 'atexit',
+      headers = { 'stdlib.h' } },
+    { fn = 'stat',
+      if_exists = { 'FunctionDecl,__xstat' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'unistd.h' } },
+    { fn = 'fstat',
+      if_exists = { 'FunctionDecl,__fxstat' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'unistd.h' } },
+    { fn = 'lstat',
+      if_exists = { 'FunctionDecl,__lxstat' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'unistd.h' } },
+    { fn = 'stat64',
+      fixups = { '#define _LARGEFILE64_SOURCE' },
+      if_exists = { 'FunctionDecl,__xstat64', 'StructDecl,stat64' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'unistd.h' } },
+    { fn = 'fstat64',
+      if_exists = { 'FunctionDecl,__fxstat64', 'StructDecl,stat64' },
+      fixups = { '#define _LARGEFILE64_SOURCE' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'unistd.h' } },
+    { fn = 'lstat64',
+      if_exists = { 'FunctionDecl,__lxstat64', 'StructDecl,stat64' },
+      fixups = { '#define _LARGEFILE64_SOURCE' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'unistd.h' } },
+    { fn = 'fstatat',
+      if_exists = { 'FunctionDecl,__fxstatat' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'fcntl.h', 'unistd.h' } },
+    { fn = 'fstatat64',
+      if_exists = { 'FunctionDecl,__fxstatat64', 'StructDecl,stat64' },
+      fixups = { '#define _LARGEFILE64_SOURCE' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'fcntl.h', 'unistd.h' } },
+    { fn = 'mknod',
+      if_exists = { 'FunctionDecl,__xmknod' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'fcntl.h', 'unistd.h' } },
+    { fn = 'mknodat',
+      if_exists = { 'FunctionDecl,__xmknodat' },
+      headers = { 'sys/types.h', 'sys/stat.h', 'fcntl.h', 'unistd.h' } },
+}
+
 local function tmap(t, f)
     local r = { }
     for i = 1, #t do
@@ -136,6 +175,7 @@ local struct_dep_mode = 'delayed_deps'
 local typedef_ends = { }
 local enums = { }
 local macros = { }
+local tags_by_kind = { }
 
 function haskind_structish(decl)
     return decl:haskind('StructDecl') or decl:haskind('UnionDecl')
@@ -165,7 +205,8 @@ function store_stmt(cur)
         delayed_deps = { },
         no_deps = { },
         idx = stmt_idx,
-        outside_attrs = { }
+        outside_attrs = { },
+        cur = cur
     }
 
     local _, attrs = children_attrs(cur)
@@ -248,6 +289,9 @@ function store_stmt(cur)
         stmt_idx = stmt_idx + 1
     end
     -- dbg('tag', tag)
+    local by_kind = tags_by_kind[stmt.kind] or { }
+    by_kind[stmt.name] = tag
+    tags_by_kind[stmt.kind] = by_kind
 
     find_deps(cur, nil, struct_dep_mode, stmt)
     -- kill any self dependencies
@@ -539,6 +583,7 @@ local function intern_string(str)
     return stringmap[str]
 end
 
+local fixups = { }
 local stmt_i = { }
 for tag, stmt in pairs(stmts) do
     stmt_i[stmt.idx] = stmt
@@ -565,6 +610,52 @@ for _, stmt in ipairs(stmt_i) do
         stmt.extent = stmt.extent
             .. ' /* fabricated */ __attribute__ (('
             .. table.concat(stmt.outside_attrs, ',') .. '))'
+    end
+end
+local headers_included = { }
+for _, nonshared in ipairs(libc_nonshared_functions) do
+    local fn_tag = tags_by_kind.FunctionDecl[nonshared.fn]
+    if fn_tag then
+        local stmt = stmts[fn_tag]
+        local to_do = true
+        for _, test in ipairs(nonshared.if_exists or { }) do
+            local kind, name = test:match('(.*),(.*)')
+            if not tags_by_kind[kind][name] then
+                to_do = false
+                break
+            end
+        end
+        if to_do then
+            local extent = stmt.extent
+            extent = extent:gsub('^%s*extern%s*', '')
+            extent = extent:gsub(stmt.name..'(%s*%()', 'cdefdb_'..stmt.name..'%1')
+            extent = extent:gsub('__attribute__.*', '') -- KLUDGE!
+            for _, fixup in ipairs(nonshared.fixups or { }) do
+                if not headers_included[fixup] then
+                    table.insert(fixups, 1, fixup)
+                    headers_included[fixup] = true
+                end
+            end
+            for _, header in ipairs(nonshared.headers or { }) do
+                if not headers_included[header] then
+                    table.insert(fixups, '#include <'..header..'>')
+                    headers_included[header] = true
+                end
+            end
+            table.insert(fixups, extent)
+            table.insert(fixups, '{')
+            local args = { }
+            for _, kid in ipairs(stmt.cur:children()) do
+                if kid:haskind('ParmDecl') then
+                    table.insert(args, kid:name())
+                end
+            end
+            table.insert(fixups, string.format('    return %s(%s);',
+                                               stmt.name,
+                                               table.concat(args, ', ')))
+            table.insert(fixups, '}')
+            stmt.extent = stmt.extent .. ' asm("cdefdb_' .. stmt.name .. '")'
+        end
     end
 end
 
@@ -668,3 +759,8 @@ emit_stmt_idx('kind', 'file', 'name')
 emit_stmt_idx('kind', 'name', 'file')
 emit_stmt_idx('name', 'file', 'kind')
 emit_stmt_idx('name', 'kind', 'file')
+
+if #fixups > 0 then
+    io.stdout:write(table.concat(fixups, '\n'))
+    io.stdout:write('\n')
+end
