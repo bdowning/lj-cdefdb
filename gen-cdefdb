@@ -19,5 +19,4 @@ ${CLANG:-clang} -E -dD "$@" "$file" > "$pp_output"
 run_in_ljclang ../process.lua "$pp_output" > cdefdb.c
 
 ${CC:-cc} -fPIC -shared -O2 -o cdefdb.so cdefdb.c
-cp "$pp_output" cdefdb.pp.c
 echo "cdefdb.so generated"
