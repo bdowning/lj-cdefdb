@@ -324,6 +324,7 @@ local function cdef_(spec)
         end
     end
     emit(to_dump, spec.verbose and print)
+    return C, ffi
 end
 
 return cdef_

@@ -65,6 +65,13 @@ of a name:
 require 'cdef' { constants = 'O_*' }
 ```
 
+`require 'cdef'` always returns `ffi.C` and `ffi`, so you can save
+some typing in common cases:
+
+```lua
+local C, ffi = require 'cdef' { ... }
+```
+
 cdef Helper Utility
 -------------------
 
