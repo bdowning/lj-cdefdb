@@ -43,7 +43,7 @@ for p in package.cpath:gmatch('[^;]+') do
         fh:close()
     end
 end
-local lC = ffi.load(cdefdb_so_path or 'cdefdb.so')
+local lC = ffi.load(cdefdb_so_path or 'cdefdb.so', true)
 
 local strcache = setmetatable({ }, { __mode = 'v' })
 local function get_string(offset)
