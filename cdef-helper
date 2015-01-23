@@ -5,7 +5,7 @@
 set -e
 
 if [ -z "$1" ]; then
-    echo Usage: $0 cdef_bodies.c '<cc args...>' >&2
+    echo Usage: $0 '(cdef_bodies.c|-)' '<cc args...>' >&2
     exit 1
 fi
 
