@@ -308,6 +308,10 @@ local function emit(to_dump, ldbg)
                               get_string(stmt.name),
                               get_string(stmt.extent))
         else
+            if kind == 'StubRef' then
+                local hash = get_string(stmt.name)
+                ffi.load(cdefdb_path .. 'cdefdb_stubs_'..hash..'.so', true)
+            end
             local s = get_string(stmt.extent)..';'
             ldbg(s)
             cdef(s)

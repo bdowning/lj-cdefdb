@@ -576,35 +576,20 @@ local function intern_string(str)
     return stringmap[str]
 end
 
+stmts.StubRef = {
+    name = hash,
+    kind = 'StubRef',
+    extent = '/* load cdefdb_stubs_'..hash..'.so */',
+    tag = 'StubRef',
+    deps = { },
+    delayed_deps = { },
+    no_deps = { },
+    idx = stmt_idx,
+    outside_attrs = { },
+    file = '<internal>',
+}
+
 local fixups = { }
-local stmt_i = { }
-for tag, stmt in pairs(stmts) do
-    stmt_i[stmt.idx] = stmt
-end
-for _, stmt in ipairs(stmt_i) do
-    local deps, delayed_deps = { }, { }
-    for tag, _ in pairs(stmt.deps) do
-        if stmts[tag] then
-            deps[#deps + 1] = stmts[tag].idx - 1
-        end
-    end
-    for tag, _ in pairs(stmt.delayed_deps) do
-        if stmts[tag] then
-            delayed_deps[#delayed_deps + 1] = stmts[tag].idx - 1
-        end
-    end
-    table.sort(deps)
-    table.sort(delayed_deps)
-    deps[#deps + 1] = -1
-    delayed_deps[#delayed_deps + 1] = -1
-    stmt.deps_dn = intern_dn(deps)
-    stmt.delayed_deps_dn = intern_dn(delayed_deps)
-    if #stmt.outside_attrs > 0 then
-        stmt.extent = stmt.extent
-            .. ' /* fabricated */ __attribute__ (('
-            .. table.concat(stmt.outside_attrs, ',') .. '))'
-    end
-end
 local headers_included = { }
 for _, nonshared in ipairs(libc_nonshared_functions) do
     local fn_tag = tags_by_kind.FunctionDecl[nonshared.fn]
@@ -650,7 +635,37 @@ for _, nonshared in ipairs(libc_nonshared_functions) do
             table.insert(fixups, '}')
             stmt.extent = stmt.extent
                 .. ' asm("cdefdb_' .. hash .. '_' .. stmt.name .. '")'
+            stmt.delayed_deps.StubRef = true
         end
+    end
+end
+
+local stmt_i = { }
+for tag, stmt in pairs(stmts) do
+    stmt_i[stmt.idx] = stmt
+end
+for _, stmt in ipairs(stmt_i) do
+    local deps, delayed_deps = { }, { }
+    for tag, _ in pairs(stmt.deps) do
+        if stmts[tag] then
+            deps[#deps + 1] = stmts[tag].idx - 1
+        end
+    end
+    for tag, _ in pairs(stmt.delayed_deps) do
+        if stmts[tag] then
+            delayed_deps[#delayed_deps + 1] = stmts[tag].idx - 1
+        end
+    end
+    table.sort(deps)
+    table.sort(delayed_deps)
+    deps[#deps + 1] = -1
+    delayed_deps[#delayed_deps + 1] = -1
+    stmt.deps_dn = intern_dn(deps)
+    stmt.delayed_deps_dn = intern_dn(delayed_deps)
+    if #stmt.outside_attrs > 0 then
+        stmt.extent = stmt.extent
+            .. ' /* fabricated */ __attribute__ (('
+            .. table.concat(stmt.outside_attrs, ',') .. '))'
     end
 end
 
