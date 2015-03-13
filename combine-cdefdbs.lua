@@ -62,6 +62,7 @@ for _, name in ipairs(db_names) do
     C.close(fd)
     local db = {
         map_base = ffi.cast('char *', m),
+        size = size,
         header = ffi.cast('struct cdefdb_header *', m)
     }
     local function db_add(name, ctype)
@@ -73,6 +74,10 @@ for _, name in ipairs(db_names) do
     db_add('strings', 'char *')
     dbs[name] = db
 end
+
+table.sort(db_names, function (a, b)
+    return dbs[a].size > dbs[b].size
+end)
 
 local function get_string(db, offset)
     return ffi_string(db.strings + offset)
