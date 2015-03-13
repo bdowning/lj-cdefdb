@@ -78,12 +78,13 @@ end
 local dbg = noprint
 -- dbg = errprint
 
-assert(arg[1], "Usage: "..arg[0].." <filename> ...")
+local ppfile, outdir, hash = ...
+
+assert(ppfile and outdir, "Usage: "..arg[0].." <pp_filename> <outdir>")
 
 local cl = require("ljclang")
 
-arg[0] = nil
-local tu = cl.createIndex():parse(arg, {"DetailedPreprocessingRecord"})
+local tu = cl.createIndex():parse({ppfile}, {"DetailedPreprocessingRecord"})
 
 if (tu == nil) then
     print('TU is nil')
@@ -546,14 +547,6 @@ if dbg ~= noprint then
     end
 end
 
-local function to_c_string_literal(str)
-    return '"' .. str
-        :gsub('\\', '\\\\')
-        :gsub('"', '\\"')
-        :gsub('\n', '\\n"\n"')
-        .. '\\0"'
-end
-
 local dns = { -1 }
 local dns_i = 1
 local dnmap = { ['-1'] = 0 }
@@ -628,7 +621,8 @@ for _, nonshared in ipairs(libc_nonshared_functions) do
         if to_do then
             local extent = stmt.extent
             extent = extent:gsub('^%s*extern%s*', '')
-            extent = extent:gsub(stmt.name..'(%s*%()', 'cdefdb_'..stmt.name..'%1')
+            extent = extent:gsub(stmt.name..'(%s*%()',
+                                 'cdefdb_'..hash..'_'..stmt.name..'%1')
             extent = extent:gsub('__attribute__.*', '') -- KLUDGE!
             for _, fixup in ipairs(nonshared.fixups or { }) do
                 if not headers_included[fixup] then
@@ -654,7 +648,8 @@ for _, nonshared in ipairs(libc_nonshared_functions) do
                                                stmt.name,
                                                table.concat(args, ', ')))
             table.insert(fixups, '}')
-            stmt.extent = stmt.extent .. ' asm("cdefdb_' .. stmt.name .. '")'
+            stmt.extent = stmt.extent
+                .. ' asm("cdefdb_' .. hash .. '_' .. stmt.name .. '")'
         end
     end
 end
@@ -679,6 +674,153 @@ table.sort(constants_i, function (a, b) return a.name < b.name end)
 for _, c in ipairs(constants_i) do
     -- so it's sorted/consistent
     c.name_i = intern_string(c.name)
+end
+
+local ffi = require 'ffi'
+
+ffi.cdef[[
+struct cdefdb_header {
+    int32_t num_stmts;
+    int32_t num_constants;
+    int32_t stmts_offset;
+    int32_t stmt_deps_offset;
+    int32_t constants_idx_offset;
+    int32_t file_kind_name_idx_offset;
+    int32_t file_name_kind_idx_offset;
+    int32_t kind_file_name_idx_offset;
+    int32_t kind_name_file_idx_offset;
+    int32_t name_file_kind_idx_offset;
+    int32_t name_kind_file_idx_offset;
+    int32_t strings_offset;
+};
+struct cdefdb_stmts_t {
+    int32_t name;
+    int32_t kind;
+    int32_t extent;
+    int32_t file;
+    int32_t deps;
+    int32_t delayed_deps;
+};
+struct cdefdb_constants_idx_t {
+    int32_t name;
+    int32_t stmt;
+};
+]]
+
+local buf = { }
+buf.header = ffi.new('struct cdefdb_header')
+buf.header.num_stmts = #stmt_i
+buf.stmts = ffi.new('struct cdefdb_stmts_t [?]', #stmt_i)
+for i, stmt in ipairs(stmt_i) do
+    buf.stmts[i-1].name = intern_string(stmt.name)
+    buf.stmts[i-1].kind = intern_string(stmt.kind)
+    buf.stmts[i-1].extent = intern_string(stmt.extent)
+    buf.stmts[i-1].file = intern_string(stmt.file)
+    buf.stmts[i-1].deps = stmt.deps_dn
+    buf.stmts[i-1].delayed_deps = stmt.delayed_deps_dn
+end
+
+function make_int32_array(t, key)
+    key = key or function (e) return e end
+    local buf = ffi.new('int32_t [?]', #t)
+    for i = 1, #t do
+        buf[i-1] = key(t[i])
+    end
+    return buf
+end
+buf.stmt_deps = make_int32_array(dns)
+
+buf.header.num_constants = #constants_i
+buf.constants_idx = ffi.new('struct cdefdb_constants_idx_t [?]', #constants_i)
+for i, c in ipairs(constants_i) do
+    buf.constants_idx[i-1].name = c.name_i
+    buf.constants_idx[i-1].stmt = c.stmt.idx - 1
+end
+
+local function sort3keys(a, b, c)
+    return function (x, y)
+        if x[a] == y[a] then
+            if x[b] == y[b] then
+                return x[c] < y[c]
+            end
+            return x[b] < y[b]
+        end
+        return x[a] < y[a]
+    end
+end
+local function make_stmt_idx(a, b, c)
+    table.sort(stmt_i, sort3keys(a, b, c))
+    return make_int32_array(stmt_i,
+                            function (stmt) return stmt.idx-1 end)
+end
+buf.file_kind_name_idx = make_stmt_idx('file', 'kind', 'name')
+buf.file_name_kind_idx = make_stmt_idx('file', 'name', 'kind')
+buf.kind_file_name_idx = make_stmt_idx('kind', 'file', 'name')
+buf.kind_name_file_idx = make_stmt_idx('kind', 'name', 'file')
+buf.name_file_kind_idx = make_stmt_idx('name', 'file', 'kind')
+buf.name_kind_file_idx = make_stmt_idx('name', 'kind', 'file')
+
+local slen = 0
+for i, str in ipairs(strings) do
+    slen = slen + #str + 1
+end
+buf.strings = ffi.new('char [?]', slen)
+slen = 0
+for i, str in ipairs(strings) do
+    ffi.copy(buf.strings + slen, ffi.cast('char *', str), #str + 1)
+    slen = slen + #str + 1
+end
+
+local o = ffi.sizeof(buf.header)
+local function header_offset(name)
+    buf.header[name..'_offset'] = o
+    o = o + ffi.sizeof(buf[name])
+end
+header_offset('stmts')
+header_offset('stmt_deps')
+header_offset('constants_idx')
+header_offset('file_kind_name_idx')
+header_offset('file_name_kind_idx')
+header_offset('kind_file_name_idx')
+header_offset('kind_name_file_idx')
+header_offset('name_file_kind_idx')
+header_offset('name_kind_file_idx')
+header_offset('strings')
+
+local function emit(f, o, len)
+    assert(f:write(ffi.string(o, len or ffi.sizeof(o))))
+end
+
+local f = assert(io.open(outdir..'/cdefdb_'..hash..'.db', 'w'))
+emit(f, buf.header)
+emit(f, buf.stmts)
+emit(f, buf.stmt_deps)
+emit(f, buf.constants_idx)
+emit(f, buf.file_kind_name_idx)
+emit(f, buf.file_name_kind_idx)
+emit(f, buf.kind_file_name_idx)
+emit(f, buf.kind_name_file_idx)
+emit(f, buf.name_file_kind_idx)
+emit(f, buf.name_kind_file_idx)
+emit(f, buf.strings)
+f:close()
+
+
+if #fixups > 0 then
+    local f = assert(io.open(outdir..'/cdefdb_stubs_'..hash..'.c', 'w'))
+    f:write(table.concat(fixups, '\n'))
+    f:write('\n')
+    f:close()
+end
+
+os.exit(0)
+
+local function to_c_string_literal(str)
+    return '"' .. str
+        :gsub('\\', '\\\\')
+        :gsub('"', '\\"')
+        :gsub('\n', '\\n"\n"')
+        .. '\\0"'
 end
 
 io.stdout:write('const int cdefdb_num_stmts = '..#stmt_i..';\n')

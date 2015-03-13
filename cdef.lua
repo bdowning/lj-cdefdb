@@ -9,69 +9,125 @@ local dbg = function () end
 -- dbg = print
 
 cdef[[
-const int cdefdb_num_stmts;
-const struct {
-    int name;
-    int kind;
-    int extent;
-    int file;
-    int deps;
-    int delayed_deps;
-} cdefdb_stmts[];
-const char *cdefdb_stmt_strings;
-const int cdefdb_stmt_deps[];
-const int cdefdb_num_constants;
-const struct {
-    int name;
-    int stmt;
-} cdefdb_constants_idx[];
-const int cdefdb_stmt_index_file_kind_name[];
-const int cdefdb_stmt_index_file_name_kind[];
-const int cdefdb_stmt_index_kind_file_name[];
-const int cdefdb_stmt_index_kind_name_file[];
-const int cdefdb_stmt_index_name_file_kind[];
-const int cdefdb_stmt_index_name_kind_file[];
+struct cdefdb_header {
+    int32_t num_stmts;
+    int32_t num_constants;
+    int32_t stmts_offset;
+    int32_t stmt_deps_offset;
+    int32_t constants_idx_offset;
+    int32_t file_kind_name_idx_offset;
+    int32_t file_name_kind_idx_offset;
+    int32_t kind_file_name_idx_offset;
+    int32_t kind_name_file_idx_offset;
+    int32_t name_file_kind_idx_offset;
+    int32_t name_kind_file_idx_offset;
+    int32_t strings_offset;
+};
+struct cdefdb_stmts_t {
+    int32_t name;
+    int32_t kind;
+    int32_t extent;
+    int32_t file;
+    int32_t deps;
+    int32_t delayed_deps;
+};
+struct cdefdb_constants_idx_t {
+    int32_t name;
+    int32_t stmt;
+};
+
 int cdefdb_strcmp(const char *s1, const char *s2) asm("strcmp");
+int cdefdb_open(const char *pathname, int flags) asm("open");
+void *cdefdb_mmap(void *addr, size_t length, int prot, int flags,
+                  int fd, int64_t offset) asm("mmap64");
+int cdefdb_close(int fd) asm("close");
+
+enum {
+    CDEFDB_O_RDONLY = 0,
+    CDEFDB_PROT_READ = 1,
+    CDEFDB_MAP_SHARED = 1,
+};
 ]]
 
-local cdefdb_so_path
+local cdefdb_path, cdefdb_size
 for p in package.cpath:gmatch('[^;]+') do
-    local path = (p:match('^.*/') or '') .. 'cdefdb.so'
-    local fh = io.open(path)
+    local path = (p:match('^.*/') or '') .. 'cdefdb/'
+    local fh = io.open(path .. 'cdef.db')
     if fh then
-        cdefdb_so_path = cdefdb_so_path or path
+        cdefdb_path = path
+        cdefdb_size = fh:seek('end')
         fh:close()
+        break
     end
 end
-local lC = ffi.load(cdefdb_so_path or 'cdefdb.so', true)
+assert(cdefdb_size)
+
+local map_base
+do
+    local fd = C.cdefdb_open(cdefdb_path .. 'cdef.db',
+                             C.CDEFDB_O_RDONLY)
+    assert(fd >= 0)
+    local m = C.cdefdb_mmap(nil, cdefdb_size,
+                            C.CDEFDB_PROT_READ,
+                            C.CDEFDB_MAP_SHARED,
+                            fd, 0)
+    assert(m ~= ffi.cast('void *', -1), ffi.errno())
+    C.cdefdb_close(fd)
+    map_base = ffi.cast('char *', m)
+end
+
+local db = {
+    header = ffi.cast('struct cdefdb_header *', map_base)
+}
+local function db_add(name, ctype)
+    db[name] = ffi.cast(ctype, map_base + db.header[name..'_offset'])
+end
+db_add('stmts', 'struct cdefdb_stmts_t *')
+db_add('stmt_deps', 'int32_t *')
+db_add('constants_idx', 'struct cdefdb_constants_idx_t *')
+db_add('file_kind_name_idx', 'int32_t *')
+db_add('file_name_kind_idx', 'int32_t *')
+db_add('kind_file_name_idx', 'int32_t *')
+db_add('kind_name_file_idx', 'int32_t *')
+db_add('name_file_kind_idx', 'int32_t *')
+db_add('name_kind_file_idx', 'int32_t *')
+db_add('strings', 'char *')
+
+local db_num_stmts = db.header.num_stmts
+local db_num_constants = db.header.num_constants
+local db_stmts = db.stmts
+local db_stmt_deps = db.stmt_deps
+local db_constants_idx = db.constants_idx
+local db_kind_name_file_idx = db.kind_name_file_idx
+local db_strings = db.strings
 
 local strcache = setmetatable({ }, { __mode = 'v' })
 local function get_string(offset)
     local ret = strcache[offset]
     if not ret then
-        ret = ffi_string(lC.cdefdb_stmt_strings + offset)
+        ret = ffi_string(db_strings + offset)
         strcache[offset] = ret
     end
     return ret
 end
 
 local function foreach_dep(offset, fun)
-    while lC.cdefdb_stmt_deps[offset] ~= -1 do
-        fun(lC.cdefdb_stmt_deps[offset])
+    while db_stmt_deps[offset] ~= -1 do
+        fun(db_stmt_deps[offset])
         offset = offset + 1
     end
 end
 
 local function string_lt(offset, str)
-    return C.cdefdb_strcmp(lC.cdefdb_stmt_strings + offset, str) < 0
+    return C.cdefdb_strcmp(db_strings + offset, str) < 0
 end
 
 local function string_ge(offset, str)
-    return C.cdefdb_strcmp(lC.cdefdb_stmt_strings + offset, str) >= 0
+    return C.cdefdb_strcmp(db_strings + offset, str) >= 0
 end
 
 local function string_eq(offset, str)
-    return C.cdefdb_strcmp(lC.cdefdb_stmt_strings + offset, str) == 0
+    return C.cdefdb_strcmp(db_strings + offset, str) == 0
 end
 
 local function lt(a, b) return a < b end
@@ -136,12 +192,12 @@ local function find_stmts(kind, name)
     local cmp_lt_name = cmp2fn('kind', kind, 'name', name, string_lt)
     local cmp_ge_namf =
         star and cmp2fn('kind', kind, 'name', namf, string_ge) or constantly(false)
-    local max = lC.cdefdb_num_stmts
+    local max = db.header.num_stmts
     local b = lower_bound(
-        lC.cdefdb_stmt_index_kind_name_file,
-        0, lC.cdefdb_num_stmts,
+        db_kind_name_file_idx,
+        0, db.header.num_stmts,
         function (i, mid)
-            local stmt = lC.cdefdb_stmts[i]
+            local stmt = db_stmts[i]
             if cmp_ge_namf(stmt) then
                 max = min(mid, max)
             end
@@ -149,9 +205,9 @@ local function find_stmts(kind, name)
             return cmp_lt_name(stmt)
         end)
     if not star then
-        local i = lC.cdefdb_stmt_index_kind_name_file[b]
-        if get_string(lC.cdefdb_stmts[i].kind) == kind and
-            get_string(lC.cdefdb_stmts[i].name) == name
+        local i = db_kind_name_file_idx[b]
+        if get_string(db_stmts[i].kind) == kind and
+            get_string(db_stmts[i].name) == name
         then
             return b, b + 1
         else
@@ -160,10 +216,10 @@ local function find_stmts(kind, name)
     end
     local cmp_lt_namf = cmp2fn('kind', kind, 'name', namf, string_lt)
     local t = lower_bound(
-        lC.cdefdb_stmt_index_kind_name_file,
+        db_kind_name_file_idx,
         b, max,
         function (i)
-            return cmp_lt_namf(lC.cdefdb_stmts[i])
+            return cmp_lt_namf(db_stmts[i])
         end)
     -- print('b', b, 'max', max, 't', t)
     if b >= t then
@@ -179,10 +235,10 @@ local function find_constants(name)
         star = true
     end
     local namf = star and string_plus_one(name)
-    local max = lC.cdefdb_num_constants
+    local max = db_num_constants
     local b = lower_bound(
-        lC.cdefdb_constants_idx,
-        0, lC.cdefdb_num_constants,
+        db_constants_idx,
+        0, db_num_constants,
         function (entry, mid)
             if star and string_ge(entry.name, namf) or false then
                 max = min(mid, max)
@@ -197,14 +253,14 @@ local function find_constants(name)
             -- return entry_name < name
         end)
     if not star then
-        if get_string(lC.cdefdb_constants_idx[b].name) == name then
+        if get_string(db_constants_idx[b].name) == name then
             return b, b + 1
         else
             error("cdef: Couldn't find constant "..name)
         end
     end
     local t = lower_bound(
-        lC.cdefdb_constants_idx,
+        db_constants_idx,
         b, max,
         function (entry) return string_lt(entry.name, namf) end)
     -- print('b', b, 'max', max, 't', t)
@@ -214,7 +270,7 @@ local function find_constants(name)
     return b, t
 end
 
-local visited = ffi.new('char [?]', lC.cdefdb_num_stmts)
+local visited = ffi.new('char [?]', db_num_stmts)
 
 local keyword_for_kind = {
     StructDecl = 'struct',
@@ -227,7 +283,7 @@ local function emit(to_dump, ldbg)
     local function dump(idx)
         local v = visited[idx]
         if v > 0 and v ~= 2 then return end
-        local stmt = lC.cdefdb_stmts[idx]
+        local stmt = db_stmts[idx]
         local kind = get_string(stmt.kind)
         if v == 2 then
             if kind == 'StructDecl' or kind == 'UnionDecl' then
@@ -277,7 +333,7 @@ end
 local function to_dump_constants(to_dump, name)
     local b, t = find_constants(name)
     for i = b, t-1 do
-        to_dump[#to_dump + 1] = lC.cdefdb_constants_idx[i].stmt
+        to_dump[#to_dump + 1] = db_constants_idx[i].stmt
         -- print('constant', i, to_dump[#to_dump])
     end
 end
@@ -285,7 +341,7 @@ end
 local function to_dump_stmts(to_dump, kind, name)
     local b, t = find_stmts(kind, name)
     for i = b, t-1 do
-        to_dump[#to_dump + 1] = lC.cdefdb_stmt_index_kind_name_file[i]
+        to_dump[#to_dump + 1] = db_kind_name_file_idx[i]
         -- print('stmt', i, to_dump[#to_dump])
     end
 end

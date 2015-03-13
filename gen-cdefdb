@@ -12,11 +12,17 @@ fi
 file="$1"; shift
 . "$(dirname "$0")"/functions.sh
 
-pp_output="/tmp/lj-cdefdb-preprocessed$$.c"
-trap "rm -f $pp_output" 0
+pp_tmpdir="/tmp/lj-cdefdb-$$"
+mkdir -p "$pp_tmpdir"
+trap "rm -rf $pp_tmpdir" 0
+pp_output="$pp_tmpdir/preprocessed$$.c"
 ${CLANG:-clang} -E -dD "$@" "$file" > "$pp_output"
 
-run_in_ljclang ../process.lua "$pp_output" > cdefdb.c
+hash=$(sha1sum "$pp_output" | cut -b1-8)
 
-${CC:-cc} -fPIC -shared -O2 -o cdefdb.so cdefdb.c
-echo "cdefdb.so generated" >&2
+mkdir "$pp_tmpdir"/out
+run_in_ljclang ../process.lua "$pp_output" "$pp_tmpdir"/out "$hash"
+cp "$pp_tmpdir"/out/* .
+
+#${CC:-cc} -fPIC -shared -O2 -o cdefdb.so cdefdb.c
+#echo "cdefdb.so generated" >&2
