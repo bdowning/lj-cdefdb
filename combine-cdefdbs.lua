@@ -117,22 +117,26 @@ for _, db_name in ipairs(db_names) do
                 d = d + 1
             end
         end
-        if not stmts[stmt.tag] then
+        if not stmts[stmt.tag] or stmts[stmt.tag].db_name == db_name then
             -- print('name', stmt.name)
             -- print('kind', stmt.kind)
             -- print('extent', stmt.extent)
             -- print('file', stmt.file)
             -- print('db_name', stmt.db_name)
-            -- print('deps')
-            -- for _, dep in ipairs(stmt.deps) do
+            -- print('deps', db_stmt.deps)
+            -- for dep, _ in pairs(stmt.deps) do
             --     print('', dep)
             -- end
-            -- print('delayed_deps')
-            -- for _, dep in ipairs(stmt.delayed_deps) do
+            -- print('delayed_deps', db_stmt.delayed_deps)
+            -- for dep, _ in pairs(stmt.delayed_deps) do
             --     print('', dep)
             -- end
+            if stmts[stmt.tag] and stmts[stmt.tag].db_name == db_name then
+                stmt.idx = stmts[stmt.tag].idx
+            else
+                stmt_idx = stmt_idx + 1
+            end
             stmts[stmt.tag] = stmt
-            stmt_idx = stmt_idx + 1
         end
     end
 
