@@ -550,7 +550,7 @@ end
 stmts.StubRef = {
     name = hash,
     kind = 'StubRef',
-    extent = '/* load cdefdb_stubs_'..hash..'.so */',
+    extent = '/* load cdefdb stubs '..hash..'.so */',
     tag = 'StubRef',
     deps = { },
     delayed_deps = { },
@@ -632,12 +632,12 @@ end
 local ffi = require 'ffi'
 local cdefdb_write = require('cdefdb.write')
 
-local f = assert(io.open(outdir..'/cdefdb_'..hash..'.db', 'w'))
+local f = assert(io.open(outdir..'/'..hash..'.db', 'w'))
 cdefdb_write(f, stmts, constants)
 f:close()
 
 if #fixups > 0 then
-    local f = assert(io.open(outdir..'/cdefdb_stubs_'..hash..'.c', 'w'))
+    local f = assert(io.open(outdir..'/'..hash..'.c', 'w'))
     f:write(table.concat(fixups, '\n'))
     f:write('\n')
     f:close()

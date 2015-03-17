@@ -8,22 +8,10 @@ local cdef, C, ffi_string, floor, min =
 local dbg = function () end
 -- dbg = print
 
+local cdefdb_dir = os.getenv('LJ_CDEFDB_DIR') or require('cdefdb.config').dir
 local cdefdb_open = require 'cdefdb.open'
 
-local cdefdb_path, cdefdb_size
-for p in package.cpath:gmatch('[^;]+') do
-    local path = (p:match('^.*/') or '') .. 'cdefdb/'
-    local fh = io.open(path .. 'cdef.db')
-    if fh then
-        cdefdb_path = path
-        cdefdb_size = fh:seek('end')
-        fh:close()
-        break
-    end
-end
-assert(cdefdb_size)
-
-local db = cdefdb_open(cdefdb_path .. 'cdef.db', cdefdb_size)
+local db = cdefdb_open(cdefdb_dir .. '/cdefdb', cdefdb_size)
 
 local db_num_stmts = db.header.num_stmts
 local db_num_constants = db.header.num_constants
@@ -245,7 +233,7 @@ local function emit(to_dump, ldbg)
         else
             if kind == 'StubRef' then
                 local hash = get_string(stmt.name)
-                ffi.load(cdefdb_path .. 'cdefdb_stubs_'..hash..'.so', true)
+                ffi.load(cdefdb_dir .. '/stubs/'..hash..'.so', true)
             end
             local s = get_string(stmt.extent)..';'
             ldbg(s)

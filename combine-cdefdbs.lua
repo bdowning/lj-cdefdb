@@ -91,6 +91,6 @@ for _, db_name in ipairs(db_names) do
     end
 end
 
-local f = assert(io.open('cdef.db', 'w'))
+local f = assert(io.open('cdefdb', 'w'))
 cdefdb_write(f, stmts, constants)
 f:close()
