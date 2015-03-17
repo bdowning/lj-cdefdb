@@ -25,6 +25,10 @@ local function cdefdb_open(filename, size)
     db.map_base = ffi.cast('char *', m)
     db.size = size
     db.header = ffi.cast('struct cdefdb_header *', db.map_base)
+    local id = ffi.string(db.header.id, 16)
+    if id ~= 'cdefdb 1.0.0\0\0\0\0' then
+        error('bad cdefdb file '..filename)
+    end
 
     local function db_add(name, ctype)
         db[name] = ffi.cast(ctype, db.map_base + db.header[name..'_offset'])

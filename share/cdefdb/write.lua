@@ -52,6 +52,7 @@ local function cdefdb_write(fh, stmts, constants)
 
     local buf = { }
     buf.header = ffi.new('struct cdefdb_header')
+    ffi.copy(buf.header.id, 'cdefdb 1.0.0')
     buf.header.num_stmts = #stmt_i
     buf.stmts = ffi.new('struct cdefdb_stmts_t [?]', #stmt_i)
     for i, stmt in ipairs(stmt_i) do
