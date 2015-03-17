@@ -12,7 +12,7 @@ if [ -z "$1" ]; then
 fi
 
 file="$1"; shift
-. "$lj_cdefdb_path"/functions.sh
+. "$lj_cdefdb_dir"/functions.sh
 out=$(readlink -f "$1"); shift
 
 pp_tmpdir="/tmp/lj-cdefdb-$$"

@@ -1,6 +1,6 @@
 # Copyright (C) 2014-2015 Brian Downing.  MIT License.
 
-lj_cdefdb_path=${LJ_CDEFDB_PATH:-$(luajit -e "print(require('cdefdb.config').path)")}
+lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
 
 prefixes="/usr/lib/llvm-3.4 /usr/lib/llvm-3.5 /usr /usr/local"
 llvminc=/usr/include
@@ -19,7 +19,7 @@ for d in $prefixes; do
 done
 
 run_in_ljclang() (
-    cd "$lj_cdefdb_path/ljclang"
+    cd "$lj_cdefdb_dir/ljclang"
     LD_LIBRARY_PATH=.:"$llvmlib":${LD_LIBRARY_PATH:-.} luajit \
         -e "package.path = '$lj_cdefdb_path/share/?.lua;'..package.path" "$@"
 )

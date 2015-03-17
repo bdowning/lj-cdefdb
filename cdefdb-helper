@@ -12,7 +12,7 @@ fi
 lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
 
 file="$1"; shift
-. "lj_cdefdb_path"/functions.sh
+. "$lj_cdefdb_dir"/functions.sh
 
 infile="/tmp/lj-cdefdb-helper$$.c"
 trap "rm -f $infile" 0
@@ -36,4 +36,4 @@ typedef __UINTPTR_TYPE__ uintptr_t;
 EOF
 cat "$file" >>"$infile"
 
-run_in_ljclang ../cdef-helper.lua "$infile" "$@"
+run_in_ljclang ../cdefdb-helper.lua "$infile" "$@"
