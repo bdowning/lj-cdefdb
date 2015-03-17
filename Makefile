@@ -14,6 +14,9 @@ all: ljclang
 ljclang:
 	cd ljclang && make
 
+BINS = cdefdb-helper gen-cdefdb
+LIBS = cdefdb-helper.lua gen-cdefdb.lua
+
 .PHONY: install
 install: all
 	mkdir -p $(DESTDIR)$(luashare_dir)
@@ -21,8 +24,9 @@ install: all
 	echo "return { dir = '$(lj_cdefdb_dir)' }" \
 	    > $(DESTDIR)$(luashare_dir)/cdefdb/config.lua
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)
-	cp -r gen-cdefdb.lua cdef-helper.lua \
-	    $(DESTDIR)$(lj_cdefdb_dir)
+	cp -r $(LIBS) $(DESTDIR)$(lj_cdefdb_dir)
+	mkdir -p $(DESTDIR)$(bindir)
+	cp -r $(BINS) $(DESTDIR)$(bindir)
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)/ljclang
 	cp -r ljclang/ljclang.lua ljclang/libljclang_support.so \
 	    $(DESTDIR)$(lj_cdefdb_dir)/ljclang
