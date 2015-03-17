@@ -113,12 +113,8 @@ local function cdefdb_write(fh, stmts, constants)
     buf.name_file_kind_idx = make_stmt_idx('name', 'file', 'kind')
     buf.name_kind_file_idx = make_stmt_idx('name', 'kind', 'file')
 
+    buf.strings = ffi.new('char [?]', strings_i)
     local slen = 0
-    for i, str in ipairs(strings) do
-        slen = slen + #str + 1
-    end
-    buf.strings = ffi.new('char [?]', slen)
-    slen = 0
     for i, str in ipairs(strings) do
         ffi.copy(buf.strings + slen, ffi.cast('char *', str), #str + 1)
         slen = slen + #str + 1
