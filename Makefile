@@ -21,7 +21,7 @@ install: all
 	echo "return { dir = '$(lj_cdefdb_dir)' }" \
 	    > $(DESTDIR)$(luashare_dir)/cdefdb/config.lua
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)
-	cp -r process.lua cdef-helper.lua \
+	cp -r gen-cdefdb.lua cdef-helper.lua \
 	    $(DESTDIR)$(lj_cdefdb_dir)
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)/ljclang
 	cp -r ljclang/ljclang.lua ljclang/libljclang_support.so \

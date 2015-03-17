@@ -24,7 +24,7 @@ ${CC:-cc} -E -dD "$@" "$file" > "$pp_output"
 hash=$(sha1sum "$pp_output" | cut -b1-8)
 
 mkdir -p "$out"
-run_in_ljclang ../process.lua "$pp_output" "$out" "$hash"
+run_in_ljclang ../gen-cdefdb.lua "$pp_output" "$out" "$hash"
 
 mkdir -p "$out"/cdefdb.d
 mv "$out"/"$hash".db "$out"/cdefdb.d
