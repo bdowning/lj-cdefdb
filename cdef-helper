@@ -9,8 +9,10 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
+
 file="$1"; shift
-. "$(dirname "$0")"/functions.sh
+. "lj_cdefdb_path"/functions.sh
 
 infile="/tmp/lj-cdefdb-helper$$.c"
 trap "rm -f $infile" 0
