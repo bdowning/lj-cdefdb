@@ -8,46 +8,7 @@ local cdef, C, ffi_string, floor, min =
 local dbg = function () end
 -- dbg = print
 
-cdef[[
-struct cdefdb_header {
-    int32_t num_stmts;
-    int32_t num_constants;
-    int32_t stmts_offset;
-    int32_t stmt_deps_offset;
-    int32_t constants_idx_offset;
-    int32_t file_kind_name_idx_offset;
-    int32_t file_name_kind_idx_offset;
-    int32_t kind_file_name_idx_offset;
-    int32_t kind_name_file_idx_offset;
-    int32_t name_file_kind_idx_offset;
-    int32_t name_kind_file_idx_offset;
-    int32_t strings_offset;
-};
-struct cdefdb_stmts_t {
-    int32_t name;
-    int32_t kind;
-    int32_t extent;
-    int32_t file;
-    int32_t deps;
-    int32_t delayed_deps;
-};
-struct cdefdb_constants_idx_t {
-    int32_t name;
-    int32_t stmt;
-};
-
-int cdefdb_strcmp(const char *s1, const char *s2) asm("strcmp");
-int cdefdb_open(const char *pathname, int flags) asm("open");
-void *cdefdb_mmap(void *addr, size_t length, int prot, int flags,
-                  int fd, int64_t offset) asm("mmap64");
-int cdefdb_close(int fd) asm("close");
-
-enum {
-    CDEFDB_O_RDONLY = 0,
-    CDEFDB_PROT_READ = 1,
-    CDEFDB_MAP_SHARED = 1,
-};
-]]
+local cdefdb_open = require 'cdefdb.open'
 
 local cdefdb_path, cdefdb_size
 for p in package.cpath:gmatch('[^;]+') do
@@ -62,36 +23,7 @@ for p in package.cpath:gmatch('[^;]+') do
 end
 assert(cdefdb_size)
 
-local map_base
-do
-    local fd = C.cdefdb_open(cdefdb_path .. 'cdef.db',
-                             C.CDEFDB_O_RDONLY)
-    assert(fd >= 0)
-    local m = C.cdefdb_mmap(nil, cdefdb_size,
-                            C.CDEFDB_PROT_READ,
-                            C.CDEFDB_MAP_SHARED,
-                            fd, 0)
-    assert(m ~= ffi.cast('void *', -1), ffi.errno())
-    C.cdefdb_close(fd)
-    map_base = ffi.cast('char *', m)
-end
-
-local db = {
-    header = ffi.cast('struct cdefdb_header *', map_base)
-}
-local function db_add(name, ctype)
-    db[name] = ffi.cast(ctype, map_base + db.header[name..'_offset'])
-end
-db_add('stmts', 'struct cdefdb_stmts_t *')
-db_add('stmt_deps', 'int32_t *')
-db_add('constants_idx', 'struct cdefdb_constants_idx_t *')
-db_add('file_kind_name_idx', 'int32_t *')
-db_add('file_name_kind_idx', 'int32_t *')
-db_add('kind_file_name_idx', 'int32_t *')
-db_add('kind_name_file_idx', 'int32_t *')
-db_add('name_file_kind_idx', 'int32_t *')
-db_add('name_kind_file_idx', 'int32_t *')
-db_add('strings', 'char *')
+local db = cdefdb_open(cdefdb_path .. 'cdef.db', cdefdb_size)
 
 local db_num_stmts = db.header.num_stmts
 local db_num_constants = db.header.num_constants
@@ -108,11 +40,14 @@ local function get_string(offset)
         ret = ffi_string(db_strings + offset)
         strcache[offset] = ret
     end
+    -- print('get_string', offset, ret)
     return ret
 end
 
 local function foreach_dep(offset, fun)
+    -- print('foreach_dep', offset)
     while db_stmt_deps[offset] ~= -1 do
+        -- print('foreach_dep', offset, db_stmt_deps[offset])
         fun(db_stmt_deps[offset])
         offset = offset + 1
     end
