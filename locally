@@ -1,0 +1,6 @@
+#!/bin/sh
+
+src_dir=$(readlink -f "$(dirname "$0")")
+lua_path=${LUA_PATH:-$(luajit -e 'print(package.path)')}
+
+LJ_CDEFDB_DIR="$src_dir" LUA_PATH="$src_dir/share/?.lua;$lua_path" "$@"
