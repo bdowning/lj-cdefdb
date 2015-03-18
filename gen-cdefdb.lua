@@ -563,7 +563,7 @@ stmts.StubRef = {
 local fixups = { }
 local headers_included = { }
 for _, nonshared in ipairs(libc_nonshared_functions) do
-    local fn_tag = tags_by_kind.FunctionDecl[nonshared.fn]
+    local fn_tag = tags_by_kind.FunctionDecl and tags_by_kind.FunctionDecl[nonshared.fn]
     if fn_tag then
         local stmt = stmts[fn_tag]
         local to_do = true
