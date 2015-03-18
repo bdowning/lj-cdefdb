@@ -15,7 +15,7 @@ ljclang:
 	cd ljclang && make
 
 BINS = cdefdb-helper gen-cdefdb
-LIBS = cdefdb-helper.lua gen-cdefdb.lua
+LIBS = functions.sh cdefdb-helper.lua gen-cdefdb.lua
 
 .PHONY: install
 install: all
@@ -28,7 +28,7 @@ install: all
 	mkdir -p $(DESTDIR)$(bindir)
 	cp -r $(BINS) $(DESTDIR)$(bindir)
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)/ljclang
-	cp -r ljclang/ljclang.lua ljclang/libljclang_support.so \
+	cp -r ljclang/ljclang*.lua ljclang/libljclang_support.so \
 	    $(DESTDIR)$(lj_cdefdb_dir)/ljclang
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)/cdefdb.d
 	mkdir -p $(DESTDIR)$(lj_cdefdb_dir)/stubs
