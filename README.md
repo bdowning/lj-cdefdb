@@ -1,6 +1,8 @@
 lj-cdefdb — An auto-generated cdef database for LuaJIT
 ======================================================
 
+(The documentation on how to build/combine cdefdbs is out of date.)
+
 Introduction
 ------------
 
