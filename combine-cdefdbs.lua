@@ -12,6 +12,8 @@ local cdefdb_open = require 'cdefdb.open'
 local cdefdb_write = require 'cdefdb.write'
 
 local db_names = {...}
+local outfile = table.remove(db_names, 1)
+assert(outfile)
 
 local dbs = { }
 for _, name in ipairs(db_names) do
@@ -91,6 +93,6 @@ for _, db_name in ipairs(db_names) do
     end
 end
 
-local f = assert(io.open('cdefdb', 'w'))
+local f = assert(io.open(outfile, 'w'))
 cdefdb_write(f, stmts, constants)
 f:close()
