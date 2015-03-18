@@ -20,6 +20,5 @@ done
 
 run_in_ljclang() (
     cd "$lj_cdefdb_dir/ljclang"
-    LD_LIBRARY_PATH=.:"$llvmlib":${LD_LIBRARY_PATH:-.} luajit \
-        -e "package.path = '$lj_cdefdb_path/share/?.lua;'..package.path" "$@"
+    LD_LIBRARY_PATH=.:"$llvmlib":${LD_LIBRARY_PATH:-.} luajit "$@"
 )
