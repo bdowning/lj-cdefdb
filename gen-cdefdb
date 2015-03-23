@@ -6,15 +6,40 @@ set -e
 
 lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
 
+usage() {
+    echo "Usage: $0 [options] (file.c|-) -- <cc args...>" >&2
+    echo "  -o DIR, --output-dir=DIR    set output directory" >&2
+    echo "                              (default 'lj-cdefdb-out')" >&2
+    echo "  -p PRIO, --priority=PRIO    set priority for generated database" >&2
+    echo "                              (default 0)" >&2
+    exit $1
+}
+
+OPTS=$(getopt -o ho:p: -l help,output-dir:,priority: -n "$0" -- "$@")
+eval set -- "$OPTS"
+
+out=lj-cdefdb-out
 prio=0
+while true; do
+    case "$1" in
+        -h|--help) usage 0; shift;;
+        -o|--output-dir) out=$2; shift 2;;
+        -p|--priority) prio=$2; shift 2;;
+        --) shift; break;;
+        *) echo "Option parse error!"; exit 1;;
+    esac
+done
+
 if [ -z "$1" ]; then
-    echo Usage: $0 '(file.c|-)' '<output dir>' '<cc args...>' >&2
+    echo "$0: No input file specified" >&2
+    echo "Try '$0 --help' for more information." >&2
     exit 1
 fi
 
 file="$1"; shift
 . "$lj_cdefdb_dir"/functions.sh
-out=$(readlink -f "$1"); shift
+
+out=$(readlink -f "$out")
 
 pp_tmpdir="/tmp/lj-cdefdb-$$"
 mkdir -p "$pp_tmpdir"
