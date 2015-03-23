@@ -3,12 +3,6 @@
 lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
 
 prefixes="/usr/lib/llvm-3.4 /usr/lib/llvm-3.5 /usr /usr/local"
-llvminc=/usr/include
-for d in $prefixes; do
-    if [ -e "$d"/include/clang-c/Index.h ]; then
-        llvminc="$d/include"
-    fi
-done
 llvmlib=/usr/lib
 for d in $prefixes; do
     for p in lib64/llvm lib/llvm lib64 lib; do
