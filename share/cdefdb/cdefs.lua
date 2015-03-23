@@ -3,6 +3,7 @@ local ffi = require 'ffi'
 ffi.cdef[[
 struct cdefdb_header {
     char id[16];
+    int32_t priority;
     int32_t num_stmts;
     int32_t num_constants;
     int32_t stmts_offset;
