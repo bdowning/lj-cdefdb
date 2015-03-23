@@ -1,3 +1,6 @@
+llvm_incdir = /usr/include
+llvm_libdir = /usr/lib
+
 prefix = /usr
 
 bindir = $(prefix)/bin
@@ -12,7 +15,7 @@ all: ljclang
 
 .PHONY: ljclang
 ljclang:
-	cd ljclang && make
+	cd ljclang && make inc="$(llvm_incdir)" libdir="$(llvm_libdir)"
 
 BINS = cdefdb-helper gen-cdefdb
 LIBS = functions.sh cdefdb-helper.lua gen-cdefdb.lua
