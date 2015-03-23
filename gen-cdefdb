@@ -6,6 +6,7 @@ set -e
 
 lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
 
+prio=0
 if [ -z "$1" ]; then
     echo Usage: $0 '(file.c|-)' '<output dir>' '<cc args...>' >&2
     exit 1
@@ -24,7 +25,7 @@ ${CC:-cc} -E -dD "$@" "$file" > "$pp_output"
 hash=$(sha1sum "$pp_output" | cut -b1-8)
 
 mkdir -p "$out"
-run_in_ljclang ../gen-cdefdb.lua "$pp_output" "$out" "$hash"
+run_in_ljclang ../gen-cdefdb.lua "$pp_output" "$out" "$hash" "$prio"
 
 mkdir -p "$out"/cdefdb.d
 mv "$out"/"$hash".db "$out"/cdefdb.d

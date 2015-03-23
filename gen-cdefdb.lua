@@ -78,7 +78,7 @@ end
 local dbg = noprint
 -- dbg = errprint
 
-local ppfile, outdir, hash = ...
+local ppfile, outdir, hash, priority = ...
 
 assert(ppfile and outdir, "Usage: "..arg[0].." <pp_filename> <outdir>")
 
@@ -633,7 +633,7 @@ local ffi = require 'ffi'
 local cdefdb_write = require('cdefdb.write')
 
 local f = assert(io.open(outdir..'/'..hash..'.db', 'w'))
-cdefdb_write(f, stmts, constants)
+cdefdb_write(f, stmts, constants, tonumber(priority))
 f:close()
 
 if #fixups > 0 then
