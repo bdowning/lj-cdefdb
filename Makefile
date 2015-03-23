@@ -17,8 +17,8 @@ all: ljclang
 ljclang:
 	cd ljclang && make inc="$(llvm_incdir)" libdir="$(llvm_libdir)"
 
-BINS = cdefdb-helper gen-cdefdb
-LIBS = functions.sh cdefdb-helper.lua gen-cdefdb.lua
+BINS = cdefdb-helper gen-cdefdb combine-cdefdbs
+LIBS = functions.sh cdefdb-helper.lua gen-cdefdb.lua combine-cdefdbs.lua
 
 .PHONY: install
 install: all

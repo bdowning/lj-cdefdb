@@ -1,0 +1,31 @@
+#!/bin/sh
+
+# Copyright (C) 2014-2015 Brian Downing.  MIT License.
+
+set -e
+
+lj_cdefdb_dir=${LJ_CDEFDB_DIR:-$(luajit -e "print(require('cdefdb.config').dir)")}
+
+usage() {
+    echo "Usage: $0 [options] <cdefdbs...>" >&2
+    echo "  -o FILE, --output=FILE    set output file" >&2
+    echo "                            (default '$lj_cdefdb_dir/cdefdb')" >&2
+    exit $1
+}
+
+OPTS=$(getopt -o ho: -l help,output-dir: -n "$0" -- "$@")
+eval set -- "$OPTS"
+
+out="$lj_cdefdb_dir/cdefdb"
+while true; do
+    case "$1" in
+        -h|--help) usage 0; shift;;
+        -o|--output-dir) out=$2; shift 2;;
+        --) shift; break;;
+        *) echo "Option parse error!"; exit 1;;
+    esac
+done
+
+. "$lj_cdefdb_dir"/functions.sh
+
+luajit "$lj_cdefdb_dir/combine-cdefdbs.lua" "$out" "$@"
