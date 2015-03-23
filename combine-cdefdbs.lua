@@ -21,7 +21,10 @@ for _, name in ipairs(db_names) do
 end
 
 table.sort(db_names, function (a, b)
-    return dbs[a].size > dbs[b].size
+    if dbs[a].header.priority == dbs[b].header.priority then
+        return dbs[a].size > dbs[b].size
+    end
+    return dbs[a].header.priority > dbs[b].header.priority
 end)
 
 local function get_string(db, offset)
