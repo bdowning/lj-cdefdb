@@ -39,6 +39,9 @@ local function get_tag(db, stmt_idx)
     local db_stmt = db.stmts[stmt_idx]
     local name = get_string(db, db_stmt.name)
     local kind = get_string(db, db_stmt.kind)
+    if name == '' then
+        name = get_string(db, db_stmt.extent):gsub('%s*', '')
+    end
     return kind..','..name
 end
 
