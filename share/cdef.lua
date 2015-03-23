@@ -11,7 +11,7 @@ local dbg = function () end
 local cdefdb_dir = os.getenv('LJ_CDEFDB_DIR') or require('cdefdb.config').dir
 local cdefdb_open = require 'cdefdb.open'
 
-local db = cdefdb_open(cdefdb_dir .. '/cdefdb', cdefdb_size)
+local db = cdefdb_open(cdefdb_dir .. '/cdefdb')
 
 local db_num_stmts = db.header.num_stmts
 local db_num_constants = db.header.num_constants
