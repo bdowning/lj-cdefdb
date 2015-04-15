@@ -194,6 +194,7 @@ local function find_constants(name)
 end
 
 local visited = ffi.new('char [?]', db_num_stmts)
+local anchored_libs = {}
 
 local keyword_for_kind = {
     StructDecl = 'struct',
@@ -233,7 +234,8 @@ local function emit(to_dump, ldbg)
         else
             if kind == 'StubRef' then
                 local hash = get_string(stmt.name)
-                ffi.load(cdefdb_dir .. '/stubs/'..hash..'.so', true)
+                local lib = ffi.load(cdefdb_dir .. '/stubs/'..hash..'.so', true)
+                anchored_libs[#anchored_libs + 1] = lib
             end
             local s = get_string(stmt.extent)..';'
             ldbg(s)
