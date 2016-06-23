@@ -233,6 +233,7 @@ function store_stmt(cur)
         stmt.extent = stmt.extent:gsub(redef_tag, '')
     end
     local redefined = false
+    local orig_tag = nil
     if stmt.name ~= '' and not cur:haskind('MacroDefinition') then
         local kindname = stmt.kind..','..stmt.name
         if kind_name_map[kindname] then
@@ -246,6 +247,7 @@ function store_stmt(cur)
                           old_stmt.file, old_stmt.pr1, old_stmt.pc1,
                           file, pr1, pc1)
             end
+            orig_tag = tag
             tag = old_tag
             stmt.tag = old_tag
             stmt.idx = old_stmt.idx
@@ -286,6 +288,9 @@ function store_stmt(cur)
     end
 
     stmts[tag] = stmt
+    if orig_tag then
+        stmts[orig_tag] = stmt
+    end
     if not redefined then
         stmt_idx = stmt_idx + 1
     end
